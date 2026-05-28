@@ -14,6 +14,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "nvs.h"
 #include "esp_http_server.h"
 
 #include "lwip/err.h"
@@ -44,6 +45,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
         ESP_LOGI(TAG, "station "MACSTR" join, AID=%d",
                  MAC2STR(event->mac), event->aid);
+
     } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) {
         wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
         ESP_LOGI(TAG, "station "MACSTR" leave, AID=%d, reason=%d",
@@ -103,161 +105,59 @@ void wifi_init_softap(void)
              EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS, EXAMPLE_ESP_WIFI_CHANNEL);
 }
 
+// NVS 
+void nvs_save_int(const char *namespace_name, const char *key, int32_t value)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(namespace_name, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        ESP_LOGE("NVS", "Error opening NVS: %s", esp_err_to_name(err));
+        return;
+    }
+
+    err = nvs_set_i32(handle, key, value);
+    if (err == ESP_OK) {
+        nvs_commit(handle);
+        ESP_LOGI("NVS", "Saved %s = %ld", key, value);
+    } else {
+        ESP_LOGE("NVS", "Failed to save %s: %s", key, esp_err_to_name(err));
+    }
+
+    nvs_close(handle);
+}
+
+int32_t nvs_load_int(const char *namespace_name, const char *key, int32_t default_value)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(namespace_name, NVS_READONLY, &handle);
+    if (err != ESP_OK) {
+        ESP_LOGW("NVS", "Namespace not found, using default");
+        return default_value;
+    }
+
+    int32_t value = default_value;
+    err = nvs_get_i32(handle, key, &value);
+
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGW("NVS", "Key %s not found, using default", key);
+    } else if (err != ESP_OK) {
+        ESP_LOGE("NVS", "Error reading %s: %s", key, esp_err_to_name(err));
+    }
+
+    nvs_close(handle);
+    return value;
+}
+
+void print_nvs(){
+    int32_t test_value = nvs_load_int("Global-Config", "Test", 0);
+    ESP_LOGI(TAG, "Loaded Test = %ld", test_value);
+}
+
+
 /* An HTTP GET handler */
 static esp_err_t base_handler(httpd_req_t *req)
 {
-    
-<head>
-</head>
-
-<body>
-<table>
-
-"<tr>"
-"<td>Pin - 1</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 2</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 3</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 4</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 5</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 6</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 7</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 8</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 9</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 10</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 11</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 12</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-
-"<tr>"
-"<td>Pin - 13</td>"
-"<td>"
-"<select>"
-"<option>OFF</option>"
-"<option>PWM</option>"
-"<option>Serial</option>"
-"</select>"
-"</td>"
-"</tr>"
-</table>    
-</body> 
-    
+    print_nvs();
     const char* resp_str = "<head></head><body><table><tr><td>Pin - 1</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 2</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 3</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 4</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 5</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 6</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 7</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 8</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 9</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 10</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 11</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 12</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 13</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr></table>    </body>     ";
     httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
@@ -266,7 +166,28 @@ static esp_err_t base_handler(httpd_req_t *req)
 
 static esp_err_t save_handler(httpd_req_t *req)
 {
-    httpd_resp_send(req, "Got",HTTPD_RESP_USE_STRLEN);
+    char query[256];
+    char value[16];
+
+    size_t qlen = httpd_req_get_url_query_len(req);
+    if (qlen == 0 || qlen >= sizeof(query)) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing query");
+    }
+
+    // Read query string
+    httpd_req_get_url_query_str(req, query, sizeof(query));
+
+    // Extract ?Test=123
+    if (httpd_query_key_value(query, "Test", value, sizeof(value)) != ESP_OK) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'Test' key");
+    }
+
+    int new_state = atoi(value);
+    ESP_LOGI(TAG, "New state = %d", new_state);
+
+    nvs_save_int("Global-Config", "Test", new_state);
+
+    httpd_resp_send(req, "Saved", HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
@@ -316,6 +237,8 @@ httpd_handle_t start_webserver(){
 
 }
 
+
+
 void app_main(void)
 {
     //Initialize NVS
@@ -327,6 +250,14 @@ void app_main(void)
     ESP_ERROR_CHECK(ret);
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
+
+    // NVS test
+
+    
+    
+
+    
+    
 
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
