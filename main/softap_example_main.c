@@ -20,6 +20,12 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
+#include "Osc99.h"
+#include "inttypes.h"
+#include "string.h"
+
+OscSlipDecoder oscSlipDecoder;
+
 /* The examples use WiFi configuration that you can set via project configuration menu.
 
    If you'd rather not, just change the below entries to strings with
@@ -35,6 +41,13 @@
 #else
 #define EXAMPLE_GTK_REKEY_INTERVAL 0
 #endif
+
+typedef enum GPIO_STATE {
+	OFF,
+	ANALOGUE,
+	DIGITAL,
+    END,
+}GPIO_STATE;
 
 static const char *TAG = "wifi softAP";
 
@@ -148,17 +161,45 @@ int32_t nvs_load_int(const char *namespace_name, const char *key, int32_t defaul
     return value;
 }
 
-void print_nvs(){
-    int32_t test_value = nvs_load_int("Global-Config", "Test", 0);
-    ESP_LOGI(TAG, "Loaded Test = %ld", test_value);
-}
+void print_all_nvs_entries(const char *namespace) {
+    nvs_iterator_t it = NULL;
+    esp_err_t err = nvs_entry_find("nvs", namespace, NVS_TYPE_ANY, &it);
 
+    while (err == ESP_OK && it != NULL) {
+        nvs_entry_info_t info;
+        nvs_entry_info(it, &info);
+        printf("Key: %s, Type: %d\n", info.key, info.type);
+
+        // If you want to read the value:
+        nvs_handle_t handle;
+        if (nvs_open(namespace, NVS_READONLY, &handle) == ESP_OK) {
+            if (info.type == NVS_TYPE_STR) {
+                size_t len;
+                nvs_get_str(handle, info.key, NULL, &len);
+                char *value = malloc(len);
+                if (value) {
+                    nvs_get_str(handle, info.key, value, &len);
+                    printf("  Value: %s\n", value);
+                    free(value);
+                }
+            } else if (info.type == NVS_TYPE_I32) {
+                int32_t val;
+                nvs_get_i32(handle, info.key, &val);
+                printf("  Value: %" PRId32 "\n", val);
+            }
+            nvs_close(handle);
+        }
+
+        err = nvs_entry_next(&it);
+    }
+    nvs_release_iterator(it);
+}
 
 /* An HTTP GET handler */
 static esp_err_t base_handler(httpd_req_t *req)
 {
-    print_nvs();
-    const char* resp_str = "<head></head><body><table><tr><td>Pin - 1</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 2</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 3</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 4</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 5</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 6</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 7</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 8</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 9</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 10</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 11</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 12</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr><tr><td>Pin - 13</td><td><select><option>OFF</option><option>PWM</option><option>Serial</option></select></td></tr></table>    </body>     ";
+    print_all_nvs_entries("Global-Config");
+    const char* resp_str = "<head><style>table {display: flex;justify-content: center; /* Centers horizontally */align-items: center; /* Centers vertically */height: 100vh; /* Full viewport height */}   tr,th,td {    border:1px solid black;}</style></head><body><form method=\"get\" action=\"/save\"> <table><tr><td>Pin - 1</td><td><select name=\"pin1\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 2</td><td><select name=\"pin2\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 3</td><td><select name=\"pin3\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 4</td><td><select name=\"pin4\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 5</td><td><select name=\"pin5\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 6</td><td><select name=\"pin6\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 7</td><td><select name=\"pin7\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 8</td><td><select name=\"pin8\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 9</td><td><select name=\"pin9\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 10</td><td><select name=\"pin10\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 11</td><td><select name=\"pin11\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 12</td><td><select name=\"pin12\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr><tr><td>Pin - 13</td><td><select name=\"pin13\"> <option value=\"0\">OFF</option><option value=\"1\">PWM</option><option value=\"2\">Serial</option></select></td></tr></table><button type=\"submit\">Save </button></form></body>    ";    
     httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 
@@ -177,17 +218,38 @@ static esp_err_t save_handler(httpd_req_t *req)
     // Read query string
     httpd_req_get_url_query_str(req, query, sizeof(query));
 
-    // Extract ?Test=123
-    if (httpd_query_key_value(query, "Test", value, sizeof(value)) != ESP_OK) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'Test' key");
+    // Expected Keys
+    const char *keys[] = {
+    "pin1","pin2","pin3","pin4","pin5","pin6","pin7","pin8","pin9","pin10","pin11","pin12","pin13",
+    };
+
+    for (int i = 1; i < sizeof(keys)/sizeof(keys[0]);i++){
+
+        // Extract ?Test=123
+        if (httpd_query_key_value(query, keys[i], value, sizeof(value)) != ESP_OK) {
+            return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'Test' key");
+        }
+
+        int new_state = atoi(value);
+
+        if (new_state < OFF || new_state >= END) {
+            return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid GPIO state");
+        }
+
+        int old_state = nvs_load_int("Global-Config", keys[i], -1);
+        
+        if (old_state == -1){
+            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Config missing");
+        }
+
+        // Only write if changed
+        if (new_state != old_state) {
+            nvs_save_int("Global-Config", keys[i],new_state);
+            ESP_LOGI(TAG, "New state = %d", new_state);
+        }
+
     }
-
-    int new_state = atoi(value);
-    ESP_LOGI(TAG, "New state = %d", new_state);
-
-    nvs_save_int("Global-Config", "Test", new_state);
-
-    httpd_resp_send(req, "Saved", HTTPD_RESP_USE_STRLEN);
+    httpd_resp_sendstr(req, "OK");
     return ESP_OK;
 }
 
