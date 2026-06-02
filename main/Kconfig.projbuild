@@ -2,7 +2,7 @@ menu "Example Configuration"
 
     config ESP_WIFI_SSID
         string "WiFi SSID"
-        default "myssid"
+        default "X-osc-2"
         help
             SSID (network name) for the example to connect to.
 
@@ -37,4 +37,21 @@ menu "Example Configuration"
         default 600
         help
             GTK rekeying interval in seconds.
+
+    config EXAMPLE_IPV4
+        bool "IPV4"
+        default y
+
+    config EXAMPLE_IPV6
+        bool "IPV6"
+        default n
+        select EXAMPLE_CONNECT_IPV6
+
+    config EXAMPLE_PORT
+        int "Port"
+        range 0 65535
+        default 3333
+        help
+            Local port the example server will listen on.
+
 endmenu
