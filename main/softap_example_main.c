@@ -6,7 +6,11 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
+#include <stdio.h>
 #include <string.h>
+#include "OscError.h"
+#include "OscPacket.h"
+#include "OscSlip.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_mac.h"
@@ -29,11 +33,110 @@
 #include "nvs_flash.h"
 #include "nvs.h" 
 
+
+// #include "driver/gpio.h"
+
+
+
+
 /* UDP socket tests */
 
 #define PORT CONFIG_EXAMPLE_PORT
 
 static const char *TAG = "example";
+static int sock = -1;
+static struct sockaddr_storage last_client_addr;
+static socklen_t last_client_len = 0;
+
+void udp_send_message(const char *msg)
+{
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Socket not initialized");
+        return;
+    }
+
+    if (last_client_len == 0) {
+        ESP_LOGE(TAG, "No client address available");
+        return;
+    }
+
+    int err = sendto(
+        sock,
+        msg,
+        strlen(msg),
+        0,
+        (struct sockaddr *)&last_client_addr,
+        last_client_len
+    );
+
+    if (err < 0) {
+        ESP_LOGE(TAG, "Send failed: errno %d", errno);
+    } else {
+        ESP_LOGI(TAG, "Sent: %s", msg);
+    }
+}
+
+void udp_send_osc(const char *msg)
+{
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Socket not initialized");
+        return;
+    }
+
+    if (last_client_len == 0) {
+        ESP_LOGE(TAG, "No client address available");
+        return;
+    }
+
+    int err = sendto(
+        sock,
+        msg,
+        strlen(msg),
+        0,
+        (struct sockaddr *)&last_client_addr,
+        last_client_len
+    );
+
+    if (err < 0) {
+        ESP_LOGE(TAG, "Send failed: errno %d", errno);
+    } else {
+        ESP_LOGI(TAG, "Sent: %s", msg);
+    }
+}
+
+
+
+OscSlipDecoder oscSlipDecoder;
+
+/* OSC mock up functions */
+
+void sendOscContents(const void* const oscContents) {
+    OscPacket OscPacket;
+    if (OscPacketInitialiseFromContents(&OscPacket, oscContents) != OscErrorNone){
+        return;
+    }
+
+    // encode a slip packet 
+    char slipPacket[MAX_OSC_PACKET_SIZE];
+    size_t slipPacketSize;
+    if (OscSlipEncodePacket(&OscPacket, &slipPacketSize, slipPacket, sizeof(slipPacket))){
+        return;
+    }
+
+    // send Packet 
+
+    udp_send_message(slipPacket);
+}
+
+
+
+void sendHelloMessage() {
+  OscMessage oscMessage;
+  OscMessageInitialise(&oscMessage, "/hello");
+  OscMessageAddString(&oscMessage, "Hi!");
+  sendOscContents(&oscMessage);
+}
+
 
 static void udp_server_task(void *pvParameters)
 {
@@ -58,7 +161,7 @@ static void udp_server_task(void *pvParameters)
             ip_protocol = IPPROTO_IPV6;
         }
 
-        int sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
+        sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
         if (sock < 0) {
             ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
             break;
@@ -145,7 +248,17 @@ static void udp_server_task(void *pvParameters)
                 ESP_LOGI(TAG, "Received %d bytes from %s:", len, addr_str);
                 ESP_LOGI(TAG, "%s", rx_buffer);
 
-                int err = sendto(sock, rx_buffer, len, 0, (struct sockaddr *)&source_addr, sizeof(source_addr));
+                memcpy(&last_client_addr, &source_addr, sizeof(source_addr));
+                last_client_len = socklen;
+
+                                
+                int err = 0;
+                if (strcmp(rx_buffer,"/ping")==0) {
+                    // err = sendto(sock, rx_buffer, len, 0, (struct sockaddr *)&source_addr, sizeof(source_addr));
+                    sendHelloMessage();
+                }
+
+                
                 if (err < 0) {
                     ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
                     break;
@@ -164,7 +277,6 @@ static void udp_server_task(void *pvParameters)
 
 
 
-OscSlipDecoder oscSlipDecoder;
 
 /* The examples use WiFi configuration that you can set via project configuration menu.
 
@@ -329,6 +441,9 @@ static esp_err_t save_handler(httpd_req_t *req)
         if (new_state != old_state) {
             nvs_save_int("Global-Config", keys[i],new_state);
             ESP_LOGI(TAG, "New state = %d", new_state);
+            char buf[50];
+            snprintf(buf, sizeof(buf),"Pin %d New state -> %d",i,new_state);
+            udp_send_message(buf);
         }
 
     }
@@ -382,8 +497,6 @@ httpd_handle_t start_webserver(){
 
 }
 
-
-
 void app_main(void)
 {
     //Initialize NVS
@@ -412,9 +525,9 @@ void app_main(void)
     printf("Event WIFI_EVENT_AP_STACONNECTED %d\n",WIFI_EVENT_AP_STACONNECTED);
     wifi_init_softap();
     httpd_handle_t server = start_webserver();
-
+    
     #ifdef CONFIG_EXAMPLE_IPV4
-        xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET, 5, NULL);
+        xTaskCreate(udp_server_task, "udp_server", 8192, (void*)AF_INET, 5, NULL);
     #endif
     #ifdef CONFIG_EXAMPLE_IPV6
         xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET6, 5, NULL);
