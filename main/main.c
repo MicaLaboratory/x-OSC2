@@ -293,7 +293,21 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         const ip_event_assigned_ip_to_client_t *e = (const ip_event_assigned_ip_to_client_t *)event_data;
         ESP_LOGI(TAG_AP, "Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'",
                  IP2STR(&e->ip), MAC2STR(e->mac), e->hostname);
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
+
+    ESP_LOGW(TAG_STA, "STA disconnected, reason: %d", event->reason);
+
+    if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
+        esp_wifi_connect();
+        s_retry_num++;
+        ESP_LOGI(TAG_STA, "Retrying connection...");
+    } else {
+        ESP_LOGE(TAG_STA, "Max retries reached, switching to AP mode");
+        xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
     }
+    }
+
 }
 
 /* Initialize soft AP */
@@ -477,10 +491,9 @@ static void gpio_intr_to_osc(void *arg){
     ESP_LOGI("GPIO", "Read: %d", gpio_get_level(2));
 }
 
-// Main
 void app_main(void)
 {
-    // Initialise NVS 
+    // NVS init (unchanged)
     esp_err_t ret = nvs_flash_init();  
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -488,124 +501,93 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-
-
     int AP_MODE = nvs_load_int("Config","Network",-1);
-    if ( AP_MODE < AP || AP_MODE >= AP_MODE_END ){
-        // First Time boot or error loading default config 
+    if (AP_MODE < AP || AP_MODE >= AP_MODE_END) {
         init_default_Config();
         esp_restart();
     }
 
-    
-    /* Initialize event group */
-    s_wifi_event_group = xEventGroupCreate();
-
-    /* Register Event handler */
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-                    ESP_EVENT_ANY_ID,
-                    &wifi_event_handler,
-                    NULL,
-                    NULL));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-                    IP_EVENT_STA_GOT_IP,
-                    &wifi_event_handler,
-                    NULL,
-                    NULL));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-                    IP_EVENT_ASSIGNED_IP_TO_CLIENT,
-                    &wifi_event_handler,
-                    NULL,
-                    NULL));
-
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    esp_netif_t *ap = NULL;
+    esp_netif_t *ap  = NULL;
     esp_netif_t *sta = NULL;
 
     if (AP_MODE == AP) {
-        ap = esp_netif_create_default_wifi_ap();   // correct place
-    } else {
-        sta = esp_netif_create_default_wifi_sta(); // correct place
+        ap = esp_netif_create_default_wifi_ap();
+    } else { // STA
+        sta = esp_netif_create_default_wifi_sta();
     }
 
-
-    /* Initialize WiFi */
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
+    if (AP_MODE == AP) {
+        // --- AP ONLY PATH ---
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+        ESP_LOGI(TAG_AP, "ESP_WIFI_MODE_AP");
+        wifi_init_softap();
+        ESP_ERROR_CHECK(esp_wifi_start());
 
-    switch (AP_MODE){
-        case AP:
-            ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-            /* Initialize AP */
-            ESP_LOGI(TAG_AP, "ESP_WIFI_MODE_AP");
-            wifi_init_softap();
-            break;
-        case STA:            
-            ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-            /* Initialize STA */
-            ESP_LOGI(TAG_STA, "ESP_WIFI_MODE_STA");
-            wifi_init_sta();
-            break;
-    }
+        // No event group wait here
+        (void)ap; // if unused for now
 
-    
-    
-    /* Start WiFi */
-    ESP_ERROR_CHECK(esp_wifi_start() );
+        // Start HTTP server directly
+        httpd_handle_t server = start_webserver();
+        (void)server;
 
-    /*
-     * Wait until either the connection is established (WIFI_CONNECTED_BIT) or
-     * connection failed for the maximum number of re-tries (WIFI_FAIL_BIT).
-     * The bits are set by event_handler() (see above)
-     */
-    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                           pdFALSE,
-                                           pdFALSE,
-                                           portMAX_DELAY);
-
-    /* xEventGroupWaitBits() returns the bits before the call returned,
-     * hence we can test which event actually happened. */
-    if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG_STA, "connected to ap SSID:%s password:%s",
-                 EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
-        softap_set_dns_addr(ap,sta);
-    } else if (bits & WIFI_FAIL_BIT) {
-        ESP_LOGI(TAG_STA, "Failed to connect to SSID:%s, password:%s",
-                 EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
     } else {
-        ESP_LOGE(TAG_STA, "UNEXPECTED EVENT");
-        return;
+        // --- STA PATH ---
+        // Create event group only for STA
+        s_wifi_event_group = xEventGroupCreate();
+        assert(s_wifi_event_group != NULL);
+
+        // Register handlers (STA-related)
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(
+                            WIFI_EVENT,
+                            ESP_EVENT_ANY_ID,
+                            &wifi_event_handler,
+                            NULL,
+                            NULL));
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(
+                            IP_EVENT,
+                            IP_EVENT_STA_GOT_IP,
+                            &wifi_event_handler,
+                            NULL,
+                            NULL));
+
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+        ESP_LOGI(TAG_STA, "ESP_WIFI_MODE_STA");
+        wifi_init_sta();
+        ESP_ERROR_CHECK(esp_wifi_start());
+
+        EventBits_t bits = xEventGroupWaitBits(
+                                s_wifi_event_group,
+                                WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                pdFALSE,
+                                pdFALSE,
+                                portMAX_DELAY);
+
+        if (bits & WIFI_CONNECTED_BIT) {
+            ESP_LOGI(TAG_STA, "connected to ap SSID:%s password:%s",
+                     EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
+            // If you ever run AP+STA, only then call:
+            // softap_set_dns_addr(ap, sta);
+        } else if (bits & WIFI_FAIL_BIT) {
+            ESP_LOGE(TAG_STA, "Failed to connect to SSID:%s, password:%s",
+                     EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
+            nvs_save_int("Config","Network",AP);
+            esp_restart();
+        } else {
+            ESP_LOGE(TAG_STA, "UNEXPECTED EVENT");
+        }
+
+        // Optionally start HTTP server here if you want it in STA mode too
+        httpd_handle_t server = start_webserver();
+        (void)server;
     }
 
-
-    // http server 
-    httpd_handle_t server = start_webserver();
-
-
-    // example of what gpio  monitoring looks like
-
-    // task per active pin
-    // int active_pins[30] = {-1};
-
-
-
-
-    // for (int i = 0; i < 30; i++){
-    //     if (active_pins[i] != -1) {
-    //         gpio_intr_enable(active_pins[i]);
-    //     }
-    // }
-
-    // gpio_intr_enable(GPIO_NUM_2);
-
-    // gpio_isr_register(gpio_intr_to_osc, &active_pins, 1, NULL);    
-
-    // Configure the pin as input
-
+    // Your GPIO loop etc. can stay as-is
     #define INPUT_PIN GPIO_NUM_2
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << INPUT_PIN),
@@ -622,3 +604,149 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(500)); // Delay 500ms
     }
 }
+
+// // Main
+// void app_main(void)
+// {
+//     // Initialise NVS 
+//     esp_err_t ret = nvs_flash_init();  
+//     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+//         ESP_ERROR_CHECK(nvs_flash_erase());
+//         ret = nvs_flash_init();
+//     }
+//     ESP_ERROR_CHECK(ret);
+
+
+
+//     int AP_MODE = nvs_load_int("Config","Network",-1);
+//     if ( AP_MODE < AP || AP_MODE >= AP_MODE_END ){
+//         // First Time boot or error loading default config 
+//         init_default_Config();
+//         esp_restart();
+//     }
+
+    
+//     /* Initialize event group */
+//     s_wifi_event_group = xEventGroupCreate();
+
+//     /* Register Event handler */
+//     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+//                     ESP_EVENT_ANY_ID,
+//                     &wifi_event_handler,
+//                     NULL,
+//                     NULL));
+//     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+//                     IP_EVENT_STA_GOT_IP,
+//                     &wifi_event_handler,
+//                     NULL,
+//                     NULL));
+//     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+//                     IP_EVENT_ASSIGNED_IP_TO_CLIENT,
+//                     &wifi_event_handler,
+//                     NULL,
+//                     NULL));
+
+//     ESP_ERROR_CHECK(esp_netif_init());
+//     ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+//     esp_netif_t *ap = NULL;
+//     esp_netif_t *sta = NULL;
+
+//     if (AP_MODE == AP) {
+//         ap = esp_netif_create_default_wifi_ap();   // correct place
+//     } else {
+//         sta = esp_netif_create_default_wifi_sta(); // correct place
+//     }
+
+
+//     /* Initialize WiFi */
+//     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+//     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+
+//     switch (AP_MODE){
+//         case AP:
+//             ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+//             /* Initialize AP */
+//             ESP_LOGI(TAG_AP, "ESP_WIFI_MODE_AP");
+//             wifi_init_softap();
+//             break;
+//         case STA:            
+//             ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+//             /* Initialize STA */
+//             ESP_LOGI(TAG_STA, "ESP_WIFI_MODE_STA");
+//             wifi_init_sta();
+//             break;
+//     }
+
+    
+    
+//     /* Start WiFi */
+//     ESP_ERROR_CHECK(esp_wifi_start() );
+
+//     /*
+//      * Wait until either the connection is established (WIFI_CONNECTED_BIT) or
+//      * connection failed for the maximum number of re-tries (WIFI_FAIL_BIT).
+//      * The bits are set by event_handler() (see above)
+//      */
+//     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+//                                            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+//                                            pdFALSE,
+//                                            pdFALSE,
+//                                            portMAX_DELAY);
+
+//     /* xEventGroupWaitBits() returns the bits before the call returned,
+//      * hence we can test which event actually happened. */
+//     if (bits & WIFI_CONNECTED_BIT) {
+//         ESP_LOGI(TAG_STA, "connected to ap SSID:%s password:%s",
+//                  EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
+//         softap_set_dns_addr(ap,sta);
+//     } else if (bits & WIFI_FAIL_BIT) {
+//         ESP_LOGI(TAG_STA, "Failed to connect to SSID:%s, password:%s",
+//                  EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
+//     } else {
+//         ESP_LOGE(TAG_STA, "UNEXPECTED EVENT");
+//         return;
+//     }
+
+
+//     // http server 
+//     httpd_handle_t server = start_webserver();
+
+
+//     // example of what gpio  monitoring looks like
+
+//     // task per active pin
+//     // int active_pins[30] = {-1};
+
+
+
+
+//     // for (int i = 0; i < 30; i++){
+//     //     if (active_pins[i] != -1) {
+//     //         gpio_intr_enable(active_pins[i]);
+//     //     }
+//     // }
+
+//     // gpio_intr_enable(GPIO_NUM_2);
+
+//     // gpio_isr_register(gpio_intr_to_osc, &active_pins, 1, NULL);    
+
+//     // Configure the pin as input
+
+//     #define INPUT_PIN GPIO_NUM_2
+//     gpio_config_t io_conf = {
+//         .pin_bit_mask = (1ULL << INPUT_PIN),
+//         .mode = GPIO_MODE_INPUT,
+//         .pull_up_en = GPIO_PULLUP_DISABLE,
+//         .pull_down_en = GPIO_PULLDOWN_DISABLE,
+//         .intr_type = GPIO_INTR_DISABLE
+//     };
+//     gpio_config(&io_conf);
+
+//     while (1) {
+//         int level = gpio_get_level(INPUT_PIN);  // Read pin state
+//         // printf("GPIO %d level: %d\n", INPUT_PIN, level);
+//         vTaskDelay(pdMS_TO_TICKS(500)); // Delay 500ms
+//     }
+// }
