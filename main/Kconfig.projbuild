@@ -79,4 +79,31 @@ menu "x-osc-2 Configuration"
         endchoice
 
     endmenu
+    menu "OSC Defaults"
+        config  ESP_OSC_REMOTE_IP
+            string  "OSC remote IP"
+            default "192.168.4.2"
+            help 
+                Sets the Default load value for the X-OSC-2 on full reset/First time boot
+        
+        config  ESP_OSC_REMOTE_PORT
+            int "Remote Port"
+            range 1000  40000
+            default  3333
+            help
+                Sets the Default load value for the X-OSC-2 on full reset/First time boot
+        
+        config  ESP_OSC_LOCAL_IP
+            string  "OSC local IP"
+            default "192.168.4.2"
+            help 
+                Sets the Default load value for the X-OSC-2 on full reset/First time boot
+        
+        config  ESP_OSC_LOCAL_PORT
+            int "local Port"
+            range 1000  40000
+            default  3333
+            help
+                Sets the Default load value for the X-OSC-2 on full reset/First time boot
+    endmenu
 endmenu
