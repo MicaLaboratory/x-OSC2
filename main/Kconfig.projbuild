@@ -106,4 +106,37 @@ menu "x-osc-2 Configuration"
             help
                 Sets the Default load value for the X-OSC-2 on full reset/First time boot
     endmenu
+    menu "UDP Config"
+        config ESP_GTK_REKEYING_ENABLE
+            bool "Enable GTK Rekeying"
+            default y
+            help
+                Flag to enable GTK rekeying.
+
+        config ESP_GTK_REKEY_INTERVAL
+            int "GTK rekey interval"
+            depends on ESP_GTK_REKEYING_ENABLE
+            range 60 65535
+            default 600
+            help
+                GTK rekeying interval in seconds.
+
+        config EXAMPLE_IPV4
+            bool "IPV4"
+            default y
+
+        config EXAMPLE_IPV6
+            bool "IPV6"
+            default n
+            select EXAMPLE_CONNECT_IPV6
+
+        config EXAMPLE_PORT
+            int "Port"
+            range 0 65535
+            default 3333
+            help
+                Local port the example server will listen on.
+
+
+    endmenu
 endmenu
