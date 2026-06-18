@@ -35,7 +35,10 @@
 #include "lwip/sockets.h"
 #include "lwip/sys.h"
 #include "cJSON.h"
-
+#include "OscError.h"
+#include "OscPacket.h"
+#include "OscSlip.h"
+#include "Osc99.h"
 
 
 #define PLACEHOLDER 0
@@ -230,6 +233,7 @@ void print_all_nvs_entries(const char *namespace) {
     nvs_release_iterator(it);
 }
 
+// DefaultS
 void init_default_Config(){
 
     // Set Default Network Settings
@@ -824,6 +828,99 @@ httpd_handle_t start_webserver(){
 
   return NULL;
 
+}
+
+// UDP
+
+/* UDP socket tests */
+
+#define PORT 3333
+static int sock = -1;
+static struct sockaddr_storage last_client_addr;
+static socklen_t last_client_len = 0;
+
+void udp_send_message(const char *msg)
+{
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Socket not initialized");
+        return;
+    }
+
+    if (last_client_len == 0) {
+        ESP_LOGE(TAG, "No client address available");
+        return;
+    }
+
+    int err = sendto(
+        sock,
+        msg,
+        strlen(msg),
+        0,
+        (struct sockaddr *)&last_client_addr,
+        last_client_len
+    );
+
+    if (err < 0) {
+        ESP_LOGE(TAG, "Send failed: errno %d", errno);
+    } else {
+        ESP_LOGI(TAG, "Sent: %s", msg);
+    }
+}
+
+void udp_send_osc(const char *msg)
+{
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Socket not initialized");
+        return;
+    }
+
+    if (last_client_len == 0) {
+        ESP_LOGE(TAG, "No client address available");
+        return;
+    }
+
+    int err = sendto(
+        sock,
+        msg,
+        strlen(msg),
+        0,
+        (struct sockaddr *)&last_client_addr,
+        last_client_len
+    );
+
+    if (err < 0) {
+        ESP_LOGE(TAG, "Send failed: errno %d", errno);
+    } else {
+        ESP_LOGI(TAG, "Sent: %s", msg);
+    }
+}
+
+
+
+//OSC
+void sendOscContents(const void* const oscContents) {
+    OscPacket OscPacket;
+    if (OscPacketInitialiseFromContents(&OscPacket, oscContents) != OscErrorNone){
+        return;
+    }
+
+    // encode a slip packet 
+    char slipPacket[MAX_OSC_PACKET_SIZE];
+    size_t slipPacketSize;
+    if (OscSlipEncodePacket(&OscPacket, &slipPacketSize, slipPacket, sizeof(slipPacket))){
+        return;
+    }
+
+    // send Packet 
+
+    udp_send_message(slipPacket);
+}
+
+void sendHelloMessage() {
+  OscMessage oscMessage;
+  OscMessageInitialise(&oscMessage, "/hello");
+  OscMessageAddString(&oscMessage, "Hi!");
+  sendOscContents(&oscMessage);
 }
 
 
