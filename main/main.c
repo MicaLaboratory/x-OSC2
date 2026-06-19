@@ -39,6 +39,9 @@
 #include "OscPacket.h"
 #include "OscSlip.h"
 #include "Osc99.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 
 
 #define PLACEHOLDER 0
@@ -90,6 +93,9 @@ static const char *TAG_AP = "WiFi SoftAP";
 static const char *TAG_STA = "WiFi Sta";
 
 static int s_retry_num = 0;
+
+//Helper funcs
+char *getCurrentIP();
 
 
 // NVS 
@@ -323,61 +329,79 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 /* Initialize soft AP */
 void wifi_init_softap(void)
 {
-    // esp_netif_t *esp_netif_ap = esp_netif_create_default_wifi_ap();
+    char *SSID = nvs_load_str("AP", "SSID", EXAMPLE_ESP_WIFI_AP_SSID);
+    char *PASS = nvs_load_str("AP", "Passphrase", EXAMPLE_ESP_WIFI_AP_PASSWD);
 
-    wifi_config_t wifi_ap_config = {
-        .ap = {
-            .ssid = EXAMPLE_ESP_WIFI_AP_SSID,
-            .ssid_len = strlen(EXAMPLE_ESP_WIFI_AP_SSID),
-            .channel = EXAMPLE_ESP_WIFI_CHANNEL,
-            .password = EXAMPLE_ESP_WIFI_AP_PASSWD,
-            .max_connection = EXAMPLE_MAX_STA_CONN,
-            .authmode = WIFI_AUTH_WPA2_PSK,
-            .pmf_cfg = {
-                .required = false,
-            },
-        },
-    };
+    wifi_config_t wifi_ap_config = { 0 };   // zero-initialise
 
-    if (strlen(EXAMPLE_ESP_WIFI_AP_PASSWD) == 0) {
-        wifi_ap_config.ap.authmode = WIFI_AUTH_OPEN;
-    }
+    // Copy SSID (max 32 bytes)
+    size_t ssid_len = strlen(SSID);
+    if (ssid_len > 32) ssid_len = 32;
 
+    memcpy(wifi_ap_config.ap.ssid, SSID, ssid_len);
+    wifi_ap_config.ap.ssid_len = ssid_len;
+
+    // Copy password (max 64 bytes)
+    size_t pass_len = strlen(PASS);
+    if (pass_len > 64) pass_len = 64;
+
+    memcpy(wifi_ap_config.ap.password, PASS, pass_len);
+
+    // Other AP settings
+    wifi_ap_config.ap.channel = EXAMPLE_ESP_WIFI_CHANNEL;
+    wifi_ap_config.ap.max_connection = EXAMPLE_MAX_STA_CONN;
+    wifi_ap_config.ap.authmode = (pass_len == 0) ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
+    wifi_ap_config.ap.pmf_cfg.required = false;
+
+    // Apply config
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
 
-    ESP_LOGI(TAG_AP, "wifi_init_softap finished. SSID:%s password:%s channel:%d",
-             EXAMPLE_ESP_WIFI_AP_SSID, EXAMPLE_ESP_WIFI_AP_PASSWD, EXAMPLE_ESP_WIFI_CHANNEL);
+    ESP_LOGI(TAG_AP, "SoftAP started. SSID:%s password:%s channel:%d",
+             SSID, PASS, EXAMPLE_ESP_WIFI_CHANNEL);
 
-    // return esp_netif_ap;
+    free(SSID);
+    free(PASS);
 }
+
 
 /* Initialize wifi station */
 void wifi_init_sta(void)
 {
     // esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
 
+    char *SSID = nvs_load_str("STA", "SSID", EXAMPLE_ESP_WIFI_STA_SSID);
+    char *PASS = nvs_load_str("STA", "Passphrase", EXAMPLE_ESP_WIFI_STA_PASSWD);
+
     wifi_config_t wifi_sta_config = {
         .sta = {
-            .ssid = EXAMPLE_ESP_WIFI_STA_SSID,
-            .password = EXAMPLE_ESP_WIFI_STA_PASSWD,
             .scan_method = WIFI_ALL_CHANNEL_SCAN,
             .failure_retry_cnt = EXAMPLE_ESP_MAXIMUM_RETRY,
-            /* Authmode threshold resets to WPA2 as default if password matches WPA2 standards (password len => 8).
-             * If you want to connect the device to deprecated WEP/WPA networks, Please set the threshold value
-             * to WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK and set the password with length and format matching to
-            * WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK standards.
-             */
             .threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
             .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
         },
     };
 
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config) );
+    // Copy SSID (max 32 bytes)
+    size_t ssid_len = strlen(SSID);
+    if (ssid_len > 32) ssid_len = 32;
+    memcpy(wifi_sta_config.sta.ssid, SSID, ssid_len);
 
-    ESP_LOGI(TAG_STA, "wifi_init_sta finished.");
+    // Copy password (max 64 bytes)
+    size_t pass_len = strlen(PASS);
+    if (pass_len > 64) pass_len = 64;
+    memcpy(wifi_sta_config.sta.password, PASS, pass_len);
+
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config));
+
+    ESP_LOGI(TAG_STA, "wifi_init_sta finished. SSID:%s PASS:%s",
+             SSID, PASS);
+
+    free(SSID);
+    free(PASS);
 
     // return esp_netif_sta;
 }
+
 
 void softap_set_dns_addr(esp_netif_t *esp_netif_ap,esp_netif_t *esp_netif_sta)
 {
@@ -415,11 +439,12 @@ void handler(httpd_req_t *req)
 static esp_err_t base_handler(httpd_req_t *req)
 {
     print_all_nvs_entries("Global-Config");
-    const char* resp_str = "<head><style>tr,th,td {    border:1px solid black;}</style></head><body><script>function updateGPIOFromJSON(data) {    if (!data || !data.pins) {        console.error(\"Invalid GPIO JSON:\", data);        return;    }    const pins = data.pins;    Object.keys(pins).forEach(pinNum => {        const pinData = pins[pinNum];        const modeSelect = document.querySelector(`select[name=\"pin${pinNum}\"]`);        if (modeSelect) {            modeSelect.value = String(pinData.mode);        }        const ioSelect = document.querySelector(`select[name=\"pin${pinNum}-io\"]`);        if (ioSelect) {            ioSelect.value = String(pinData.io);        }    });}function updateNetworkFromJSON(data) {    if (!data) {        console.error(\"Invalid Network JSON:\", data);        return;    }        const modeAP  = document.querySelector('input[name=\"mode\"][value=\"AP\"]');    const modeSTA = document.querySelector('input[name=\"mode\"][value=\"STA\"]');    if (data.mode === \"AP\" && modeAP)  modeAP.checked = true;    if (data.mode === \"STA\" && modeSTA) modeSTA.checked = true;        const apSSID = document.querySelector('input[name=\"AP-SSID\"]');    const apPass = document.querySelector('input[name=\"AP-Password\"]');    if (apSSID) apSSID.value = data.AP_SSID || \"\";    if (apPass) apPass.value = data.AP_Password || \"\";        const staSSID = document.querySelector('input[name=\"STA-SSID\"]');    const staPass = document.querySelector('input[name=\"STA-Password\"]');    if (staSSID) staSSID.value = data.STA_SSID || \"\";    if (staPass) staPass.value = data.STA_Password || \"\";}function updateOSCFromJSON(data) {    if (!data) {        console.error(\"Invalid OSC JSON:\", data);        return;    }    const remoteIP   = document.querySelector('input[name=\"OSC-Remote\"]');    const remotePort = document.querySelector('input[name=\"OSC-Remote-Port\"]');    const localIP    = document.querySelector('input[name=\"OSC-Local\"]');    const localPort  = document.querySelector('input[name=\"OSC-Local-Port\"]');    if (remoteIP)   remoteIP.value   = data.remote_ip   || \"\";    if (remotePort) remotePort.value = data.remote_port || \"\";    if (localIP)    localIP.value    = data.local_ip    || \"\";    if (localPort)  localPort.value  = data.local_port  || \"\";}document.addEventListener(\"DOMContentLoaded\", () => {    fetch(\"/gpio.json\")        .then(res => res.json())        .then(json => updateGPIOFromJSON(json))        .catch(err => console.error(\"Failed to load GPIO JSON:\", err));            fetch(\"/network.json\")        .then(res => res.json())        .then(json => updateNetworkFromJSON(json))        .catch(err => console.error(\"Failed to load Network JSON:\", err));        fetch(\"/osc.json\")        .then(res => res.json())        .then(json => updateOSCFromJSON(json))        .catch(err => console.error(\"Failed to load OSC JSON:\", err));});</script><section>    <h1>Network</h1>    <form method=\"get\" action=\"/network\">        <p>Network Type:</p>    <input type=\"radio\" name=\"mode\" value=\"AP\"> Self Host    <input type=\"radio\" name=\"mode\" value=\"STA\"> Join Network    <br>    <!-- AP -->    <label for=\"AP-SSID\">SSID</label>    <input type=\"text\" name=\"AP-SSID\">    <br>    <label for=\"AP-Password\">Password</label>    <input type=\"text\" name=\"AP-Password\">    <br>    <!-- STA -->    <label for=\"STA-SSID\">SSID</label>    <input type=\"text\" name=\"STA-SSID\">    <br>    <label for=\"STA-Password\">Password</label>    <input type=\"text\" name=\"STA-Password\">    <br>    <button type=\"submit\" style=\"column-span: 3;\">Update Network Configuration</button>            </form>    </section><section>    <h1>OSC</h1>    <form method=\"get\" action=\"/OSC\">    <!-- OSC -->    <label for=\"OSC-Remote\">Remote IP</label>    <input type=\"text\" name=\"OSC-Remote\">    <label for=\"OSC-Remote-Port\">Port:</label>    <input type=\"number\" name=\"OSC-Remote\">    <br>    <label for=\"OSC-Local\">Local IP</label>    <input type=\"text\" name=\"OSC-Remote\">    <label for=\"OSC-Local-Port\">Port:</label>    <input type=\"number\" name=\"OSC-Remote\">    <br>    <button type=\"submit\" style=\"column-span: 3;\">Update OSC Configuration</button>            </form>    </section><section><h1>GPIO</h1>    <form method=\"post\" action=\"/GPIO\"> <table><tr><td>Pin - 1</td><td><select name=\"pin1\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin1-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 2</td><td><select name=\"pin2\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin2-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 3</td><td><select name=\"pin3\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin3-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 4</td><td><select name=\"pin4\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin4-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 5</td><td><select name=\"pin5\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin5-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 6</td><td><select name=\"pin6\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin6-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 7</td><td><select name=\"pin7\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin7-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 8</td><td><select name=\"pin8\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin8-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 9</td><td><select name=\"pin9\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin9-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 10</td><td><select name=\"pin10\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin10-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 11</td><td><select name=\"pin11\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin11-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 12</td><td><select name=\"pin12\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin12-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 13</td><td><select name=\"pin13\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin13-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 14</td><td><select name=\"pin14\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin14-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 15</td><td><select name=\"pin15\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin15-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 16</td><td><select name=\"pin16\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin16-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 17</td><td><select name=\"pin17\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin17-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 18</td><td><select name=\"pin18\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin18-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 19</td><td><select name=\"pin19\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin19-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 20</td><td><select name=\"pin20\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin20-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 21</td><td><select name=\"pin21\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin21-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 22</td><td><select name=\"pin22\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin22-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 23</td><td><select name=\"pin23\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin23-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 24</td><td><select name=\"pin24\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin24-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 25</td><td><select name=\"pin25\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin25-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 26</td><td><select name=\"pin26\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin26-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 27</td><td><select name=\"pin27\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin27-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 28</td><td><select name=\"pin28\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin28-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr></table><button type=\"submit\">Save </button></form></body>    ";
+    const char* resp_str = "<head><style>tr,th,td {    border:1px solid black;}</style></head><body><script>function updateGPIOFromJSON(data) {    if (!data || !data.pins) {        console.error(\"Invalid GPIO JSON:\", data);        return;    }    const pins = data.pins;    Object.keys(pins).forEach(pinNum => {        const pinData = pins[pinNum];        const modeSelect = document.querySelector(`select[name=\"pin${pinNum}\"]`);        if (modeSelect) {            modeSelect.value = String(pinData.mode);        }        const ioSelect = document.querySelector(`select[name=\"pin${pinNum}-io\"]`);        if (ioSelect) {            ioSelect.value = String(pinData.io);        }    });}function updateNetworkFromJSON(data) {    if (!data) {        console.error(\"Invalid Network JSON:\", data);        return;    }        const modeAP  = document.querySelector('input[name=\"mode\"][value=\"AP\"]');    const modeSTA = document.querySelector('input[name=\"mode\"][value=\"STA\"]');    if (data.mode === \"AP\" && modeAP)  modeAP.checked = true;    if (data.mode === \"STA\" && modeSTA) modeSTA.checked = true;        const apSSID = document.querySelector('input[name=\"AP-SSID\"]');    const apPass = document.querySelector('input[name=\"AP-Password\"]');    if (apSSID) apSSID.value = data.AP_SSID || \"\";    if (apPass) apPass.value = data.AP_Password || \"\";        const staSSID = document.querySelector('input[name=\"STA-SSID\"]');    const staPass = document.querySelector('input[name=\"STA-Password\"]');    if (staSSID) staSSID.value = data.STA_SSID || \"\";    if (staPass) staPass.value = data.STA_Password || \"\";}function updateOSCFromJSON(data) {    if (!data) {        console.error(\"Invalid OSC JSON:\", data);        return;    }    const remoteIP   = document.querySelector('input[name=\"OSC-Remote\"]');    const remotePort = document.querySelector('input[name=\"OSC-Remote-Port\"]');    const localIP    = document.querySelector('input[name=\"OSC-Local\"]');    const localPort  = document.querySelector('input[name=\"OSC-Local-Port\"]');    if (remoteIP)   remoteIP.value   = data.remote_ip   || \"\";    if (remotePort) remotePort.value = data.remote_port || \"\";    if (localIP)    localIP.value    = data.local_ip    || \"\";    if (localPort)  localPort.value  = data.local_port  || \"\";}document.addEventListener(\"DOMContentLoaded\", () => {    fetch(\"/gpio.json\")        .then(res => res.json())        .then(json => updateGPIOFromJSON(json))        .catch(err => console.error(\"Failed to load GPIO JSON:\", err));            fetch(\"/network.json\")        .then(res => res.json())        .then(json => updateNetworkFromJSON(json))        .catch(err => console.error(\"Failed to load Network JSON:\", err));        fetch(\"/osc.json\")        .then(res => res.json())        .then(json => updateOSCFromJSON(json))        .catch(err => console.error(\"Failed to load OSC JSON:\", err));});</script><section>    <h1>Network</h1>    <form method=\"get\" action=\"/network\">        <p>Network Type:</p>    <input type=\"radio\" name=\"mode\" value=\"AP\"> Self Host    <input type=\"radio\" name=\"mode\" value=\"STA\"> Join Network    <br>    <!-- AP -->    <label for=\"AP-SSID\">SSID</label>    <input type=\"text\" name=\"AP-SSID\">    <br>    <label for=\"AP-Password\">Password</label>    <input type=\"text\" name=\"AP-Password\">    <br>    <!-- STA -->    <label for=\"STA-SSID\">SSID</label>    <input type=\"text\" name=\"STA-SSID\">    <br>    <label for=\"STA-Password\">Password</label>    <input type=\"text\" name=\"STA-Password\">    <br>    <button type=\"submit\" style=\"column-span: 3;\">Update Network Configuration</button>            </form>    </section><section>    <h1>OSC</h1>    <form method=\"get\" action=\"/OSC\">    <!-- OSC -->    <label for=\"OSC-Remote\">Remote IP</label>    <input type=\"text\" name=\"OSC-Remote\">    <label for=\"OSC-Remote-Port\">Port:</label>    <input type=\"number\" name=\"OSC-Remote-Port\">    <br>    <label for=\"OSC-Local\">Local IP</label>    <input type=\"text\" name=\"OSC-Local\">    <label for=\"OSC-Local-Port\">Port:</label>    <input type=\"number\" name=\"OSC-Local-Port\">    <br>    <button type=\"submit\" style=\"column-span: 3;\">Update OSC Configuration</button>            </form>    </section><section><h1>GPIO</h1>    <form method=\"post\" action=\"/GPIO\"> <table><tr><td>Pin - 1</td><td><select name=\"pin1\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin1-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 2</td><td><select name=\"pin2\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin2-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 3</td><td><select name=\"pin3\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin3-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 4</td><td><select name=\"pin4\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin4-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 5</td><td><select name=\"pin5\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin5-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 6</td><td><select name=\"pin6\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin6-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 7</td><td><select name=\"pin7\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin7-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 8</td><td><select name=\"pin8\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin8-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 9</td><td><select name=\"pin9\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin9-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 10</td><td><select name=\"pin10\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin10-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 11</td><td><select name=\"pin11\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin11-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 12</td><td><select name=\"pin12\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin12-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 13</td><td><select name=\"pin13\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin13-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 14</td><td><select name=\"pin14\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin14-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 15</td><td><select name=\"pin15\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin15-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 16</td><td><select name=\"pin16\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin16-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 17</td><td><select name=\"pin17\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin17-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 18</td><td><select name=\"pin18\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin18-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 19</td><td><select name=\"pin19\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin19-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 20</td><td><select name=\"pin20\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin20-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 21</td><td><select name=\"pin21\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin21-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 22</td><td><select name=\"pin22\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin22-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 23</td><td><select name=\"pin23\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin23-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 24</td><td><select name=\"pin24\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin24-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 25</td><td><select name=\"pin25\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin25-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 26</td><td><select name=\"pin26\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin26-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 27</td><td><select name=\"pin27\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin27-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 28</td><td><select name=\"pin28\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin28-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr></table><button type=\"submit\">Save </button></form></body>   ";
     httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 
 }
+
 static esp_err_t Conf_Reset(httpd_req_t *req) {
     nvs_save_int("Config", "Network", -1);
     esp_restart();
@@ -701,7 +726,8 @@ static esp_err_t osc_json_handler(httpd_req_t *req)
 
     // Load OSC settings
     char *remote_ip = nvs_load_str("OSC", "Remote_IP", "0.0.0.0");
-    char *local_ip  = nvs_load_str("OSC", "Local_IP",  "0.0.0.0");
+    // char *local_ip  = nvs_load_str("OSC", "Local_IP",  "0.0.0.0");
+    char *local_ip = getCurrentIP();
 
     int remote_port = nvs_load_int("OSC", "Remote_Port", 9000);
     int local_port  = nvs_load_int("OSC", "Local_Port", 8000);
@@ -722,14 +748,13 @@ static esp_err_t osc_json_handler(httpd_req_t *req)
 
     // Free allocated strings
     free(remote_ip);
-    free(local_ip);
+    // free(local_ip);
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, json, strlen(json));
 
     return ESP_OK;
 }
-
 
 static const httpd_uri_t base_uri= {
     .uri       = "/",
@@ -832,6 +857,29 @@ httpd_handle_t start_webserver(){
 
 // UDP
 
+char *getCurrentIP() {
+    static char ip_str[16];
+    esp_netif_ip_info_t ip_info;
+
+    int AP_MODE = nvs_load_int("Config", "Network", -1);
+
+    esp_netif_t *netif = NULL;
+
+    if (AP_MODE == STA) {
+        netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    } else if (AP_MODE == AP) {
+        netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    }
+
+    if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+        sprintf(ip_str, IPSTR, IP2STR(&ip_info.ip));
+        return ip_str;
+    }
+
+    return "0.0.0.0";
+}
+
+
 /* UDP socket tests */
 
 #define PORT 3333
@@ -839,7 +887,7 @@ static int sock = -1;
 static struct sockaddr_storage last_client_addr;
 static socklen_t last_client_len = 0;
 
-void sendHelloMessage();
+void sendPingMessage();
 
 static void udp_server_task(void *pvParameters)
 {
@@ -958,7 +1006,7 @@ static void udp_server_task(void *pvParameters)
                 int err = 0;
                 if (strcmp(rx_buffer,"/ping")==0) {
                     // err = sendto(sock, rx_buffer, len, 0, (struct sockaddr *)&source_addr, sizeof(source_addr));
-                    sendHelloMessage();
+                    sendPingMessage();
                 }
 
                 
@@ -1055,18 +1103,175 @@ void sendOscContents(const void* const oscContents) {
     udp_send_osc(OscPacket);
 }
 
-void sendHelloMessage() {
-  OscMessage oscMessage;
-  OscMessageInitialise(&oscMessage, "/hello");
-  OscMessageAddString(&oscMessage, "Hi!");
-  sendOscContents(&oscMessage);
+void sendPingMessage() {
+    OscMessage oscMessage;
+    OscMessageInitialise(&oscMessage, "/ping");
+
+    // 1. Add current IP (AP or STA depending on NVS setting)
+    OscMessageAddString(&oscMessage, getCurrentIP());
+
+    // 2. Add MAC address
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+
+    char mac_str[18];
+    sprintf(mac_str, "%02X:%02X:%02X:%02X:%02X:%02X",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    OscMessageAddString(&oscMessage, mac_str);
+
+    // 3. Add firmware version
+    // You can replace this with your own version string
+    OscMessageAddString(&oscMessage, "0.0.1");
+
+    // Send the OSC message
+    sendOscContents(&oscMessage);
 }
+
+void oscDigitalSend(int pinval, int pinnum){
+};
+
+
+void oscAnalogueSend(float pinval, int pinnum);
+
+
+// Pin reads
+adc_oneshot_unit_handle_t adc_handle;
+
+void adc_init(void)
+{
+    adc_oneshot_unit_init_cfg_t init_cfg = {
+        .unit_id = ADC_UNIT_1,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_cfg, &adc_handle));
+
+    for (int i = 2; i < 6 + 1; i++) {
+
+        int channel = i - 1;
+
+        adc_oneshot_chan_cfg_t chan_cfg = {
+            .atten = ADC_ATTEN_DB_12,
+            .bitwidth = ADC_BITWIDTH_DEFAULT,
+        };
+
+        ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, channel, &chan_cfg));
+    }
+}
+
+int readDigitalPin(int pin)
+{
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << pin),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+
+    gpio_config(&io_conf);
+
+    return gpio_get_level(pin);
+}
+
+float readAnaloguePin(int pin)
+{
+    int channel = pin - 1;
+
+    int raw = 0;
+    ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, channel, &raw));
+
+    return (float)raw / 4095.0f;
+}
+
 
 
 // Reads the Current Pin Values of active pins and sends it via osc
-static void gpio_intr_to_osc(void *arg){
-    ESP_LOGI("GPIO", "Read: %d", gpio_get_level(2));
+
+typedef enum GPIO_STATE {
+    OFF,
+    ANALOGUE,
+    DIGITAL,
+    END,
+} GPIO_STATE;
+
+static int last_digital[PINCOUNT] = {0};
+
+void send_digital_inputs(void)
+{
+    int changed = 0;
+    int values[PINCOUNT];
+
+    for (int i = 1; i < PINCOUNT + 1; i++) {
+
+        char key_mode[32];
+        snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
+
+        int mode = nvs_load_int("Pins", key_mode, 0);
+
+        if (mode == DIGITAL) {
+            int val = readDigitalPin(i);
+            values[i-1] = val;
+
+            if (val != last_digital[i-1]) {
+                changed = 1;
+                last_digital[i-1] = val;
+            }
+        } else {
+            values[i-1] = 0;
+        }
+    }
+
+    if (!changed) return;
+
+    OscMessage msg;
+    OscMessageInitialise(&msg, "/inputs/digital");
+
+    for (int i = 0; i < PINCOUNT; i++) {
+        OscMessageAddInt32(&msg, values[i]);
+    }
+
+    sendOscContents(&msg);
 }
+
+
+void send_analogue_inputs(void)
+{
+    OscMessage msg;
+    OscMessageInitialise(&msg, "/inputs/analogue");
+
+    for (int i = 1; i < PINCOUNT + 1; i++) {
+
+        char key_mode[32];
+        snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
+
+        int mode = nvs_load_int("Pins", key_mode, 0);
+
+        if (mode == ANALOGUE) {
+            float val = readAnaloguePin(i);
+            OscMessageAddFloat32(&msg, val);
+        } else {
+            OscMessageAddFloat32(&msg, 0.0f);
+        }
+    }
+
+    sendOscContents(&msg);
+}
+
+
+
+void gpio_task(void *pv)
+{
+    while (1) {
+
+        send_digital_inputs();   // only sends on change
+        send_analogue_inputs();  // sends every cycle
+
+        vTaskDelay(pdMS_TO_TICKS(10)); // 100 Hz
+    }
+}
+
+
+
 
 void app_main(void)
 {
@@ -1172,21 +1377,15 @@ void app_main(void)
         xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET6, 5, NULL);
     #endif
 
+    adc_init();
 
-    // Your GPIO loop etc. can stay as-is
-    #define INPUT_PIN GPIO_NUM_2
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << INPUT_PIN),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
-    };
-    gpio_config(&io_conf);
+    xTaskCreate(
+    gpio_task,          // Task function
+    "GPIO Task",        // Name (for debugging)
+    8192,               // Stack size in bytes
+    NULL,               // Task parameters
+    5,                  // Priority (1–10 typical)
+    NULL                // Task handle (optional)
+);
 
-    while (1) {
-        int level = gpio_get_level(INPUT_PIN);  // Read pin state
-        // printf("GPIO %d level: %d\n", INPUT_PIN, level);
-        vTaskDelay(pdMS_TO_TICKS(500)); // Delay 500ms
-    }
 }
