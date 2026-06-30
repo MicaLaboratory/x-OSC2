@@ -976,11 +976,9 @@ static void udp_server_task(void *pvParameters)
         socklen_t socklen = sizeof(source_addr);
         while (1) {
             ESP_LOGI(TAG, "Waiting for data");
-#if defined(CONFIG_LWIP_NETBUF_RECVINFO) && !defined(CONFIG_EXAMPLE_IPV6)
-            int len = recvmsg(sock, &msg, 0);
-#else
+
             int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&source_addr, &socklen);
-#endif
+
             // Error occurred during receiving
             if (len < 0) {
                 ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
