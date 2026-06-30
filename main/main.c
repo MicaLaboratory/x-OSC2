@@ -960,11 +960,6 @@ static void udp_server_task(void *pvParameters)
             break;
         }
         ESP_LOGI(TAG, "Socket created");
-
-#if defined(CONFIG_LWIP_NETBUF_RECVINFO) && !defined(CONFIG_EXAMPLE_IPV6)
-        int enable = 1;
-        lwip_setsockopt(sock, IPPROTO_IP, IP_PKTINFO, &enable, sizeof(enable));
-#endif
         // Set timeout
         struct timeval timeout;
         timeout.tv_sec = 10;
@@ -979,24 +974,6 @@ static void udp_server_task(void *pvParameters)
 
         struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
         socklen_t socklen = sizeof(source_addr);
-
-#if defined(CONFIG_LWIP_NETBUF_RECVINFO) && !defined(CONFIG_EXAMPLE_IPV6)
-        struct iovec iov;
-        struct msghdr msg;
-        struct cmsghdr *cmsgtmp;
-        u8_t cmsg_buf[CMSG_SPACE(sizeof(struct in_pktinfo))];
-
-        iov.iov_base = rx_buffer;
-        iov.iov_len = sizeof(rx_buffer);
-        msg.msg_control = cmsg_buf;
-        msg.msg_controllen = sizeof(cmsg_buf);
-        msg.msg_flags = 0;
-        msg.msg_iov = &iov;
-        msg.msg_iovlen = 1;
-        msg.msg_name = (struct sockaddr *)&source_addr;
-        msg.msg_namelen = socklen;
-#endif
-
         while (1) {
             ESP_LOGI(TAG, "Waiting for data");
 #if defined(CONFIG_LWIP_NETBUF_RECVINFO) && !defined(CONFIG_EXAMPLE_IPV6)
