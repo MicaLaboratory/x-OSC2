@@ -987,59 +987,25 @@ static void udp_server_task(void *pvParameters)
                 break;
             }
             // Data received
-            else {
-                // Get the sender's ip address as string
-                if (source_addr.ss_family == PF_INET) {
-                    inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
-                } else if (source_addr.ss_family == PF_INET6) {
-                    inet6_ntoa_r(((struct sockaddr_in6 *)&source_addr)->sin6_addr, addr_str, sizeof(addr_str) - 1);
-                }
-
-                rx_buffer[len] = 0; // Null-terminate whatever we received and treat like a string...
-                ESP_LOGI(TAG, "Received %d bytes from %s:", len, addr_str);
-                ESP_LOGI(TAG, "%s", rx_buffer);
-
-                memcpy(&last_client_addr, &source_addr, sizeof(source_addr));
-                last_client_len = socklen;
-
-                                
-                int err = 0;
-                if (strcmp(rx_buffer,"/ping")==0) {
-                    // err = sendto(sock, rx_buffer, len, 0, (struct sockaddr *)&source_addr, sizeof(source_addr));
-                    sendPingMessage();
-                } else if (strncmp(rx_buffer, "/outputs/digital/", 17) == 0) {
-
-                    // Extract GPIO number from the OSC address
-                    int gpio = atoi(rx_buffer + 17);
-
-                    // Find the body (integer after the address)
-                    // Example blob: "/outputs/digital/23 1"
-                    char *space = strchr(rx_buffer, ' ');
-                    int level = 0;
-
-                    if (space != NULL) {
-                        level = atoi(space + 1);   // convert "1" or "0" to int
-                    }
-
-                    // Configure pin as output (safe to call repeatedly)
-                    gpio_config_t cfg = {
-                        .pin_bit_mask = 1ULL << gpio,
-                        .mode = GPIO_MODE_OUTPUT,
-                        .pull_up_en = GPIO_PULLUP_DISABLE,
-                        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-                        .intr_type = GPIO_INTR_DISABLE
-                    };
-                    gpio_config(&cfg);
-
-                    // Set the pin HIGH or LOW
-                    gpio_set_level(gpio, level ? 1 : 0);
-                }
-                
-                if (err < 0) {
-                    ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-                    break;
-                }
+            // Get the sender's ip address as string
+            if (source_addr.ss_family == PF_INET) {
+                inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
+            } else if (source_addr.ss_family == PF_INET6) {
+                inet6_ntoa_r(((struct sockaddr_in6 *)&source_addr)->sin6_addr, addr_str, sizeof(addr_str) - 1);
             }
+
+            rx_buffer[len] = 0; // Null-terminate whatever we received and treat like a string...
+            ESP_LOGI(TAG, "Received %d bytes from %s:", len, addr_str);
+            ESP_LOGI(TAG, "%s", rx_buffer);
+
+            memcpy(&last_client_addr, &source_addr, sizeof(source_addr));
+            last_client_len = socklen;
+
+            OscPacket oscPacket;
+            OscPacketInitialiseFromCharArray(&oscPacket, rx_buffer, len);
+            oscPacket.processMessage = ProcessMessage;
+            OscPacketProcessMessages(&oscPacket);
+
         }
 
         if (sock != -1) {
