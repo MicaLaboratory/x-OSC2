@@ -965,16 +965,6 @@ static void udp_server_task(void *pvParameters)
         int enable = 1;
         lwip_setsockopt(sock, IPPROTO_IP, IP_PKTINFO, &enable, sizeof(enable));
 #endif
-
-#if defined(CONFIG_EXAMPLE_IPV4) && defined(CONFIG_EXAMPLE_IPV6)
-        if (addr_family == AF_INET6) {
-            // Note that by default IPV6 binds to both protocols, it is must be disabled
-            // if both protocols used at the same time (used in CI)
-            int opt = 1;
-            setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt));
-        }
-#endif
         // Set timeout
         struct timeval timeout;
         timeout.tv_sec = 10;
