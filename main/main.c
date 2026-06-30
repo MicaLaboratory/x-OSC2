@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "OscAddress.h"
+#include "OscMessage.h"
 #include "esp_err.h"
 #include "nvs_flash.h"
 #include "nvs.h" 
@@ -879,6 +881,46 @@ char *getCurrentIP() {
     return "0.0.0.0";
 }
 
+void sendPingMessage();
+// OSC message server
+void ProcessMessage(const OscTimeTag* const oscTimeTag,
+                    OscMessage* const oscMessage)
+{
+    const char *addr = oscMessage->oscAddressPattern;
+    ESP_LOGI("OSC_Process", "%s",addr);
+    // Match prefix
+
+    if (OscAddressMatch(addr, "/ping")){
+        sendPingMessage();
+    }
+
+    if (OscAddressMatch(addr, "/outputs/digital/6")) {
+        ESP_LOGI("OSC_Proccess", "addr");
+        // Extract channel number
+        int gpio = atoi(addr + strlen("/outputs/digital/"));
+
+        // Extract integer argument
+        int32_t level;
+        if (OscMessageGetArgumentAsInt32(oscMessage, &level) != OscErrorNone) {
+            return;
+        }
+
+        // Configure pin
+        gpio_config_t cfg = {
+            .pin_bit_mask = 1ULL << gpio,
+            .mode = GPIO_MODE_OUTPUT,
+        };
+        gpio_config(&cfg);
+
+        // Set pin
+        gpio_set_level(gpio, level ? 1 : 0);
+        return;
+    }
+}
+
+
+
+
 
 /* UDP socket tests */
 
@@ -1396,7 +1438,7 @@ void app_main(void)
 
     
     #ifdef CONFIG_EXAMPLE_IPV4
-        xTaskCreate(udp_server_task, "udp_server", 8192, (void*)AF_INET, 5, NULL);
+        xTaskCreate(udp_server_task, "udp_server", 12288, (void*)AF_INET, 5, NULL);
     #endif
     #ifdef CONFIG_EXAMPLE_IPV6
         xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET6, 5, NULL);
