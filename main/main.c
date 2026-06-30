@@ -1034,7 +1034,7 @@ void udp_send_message(const char *msg)
     }
 
     if (last_client_len == 0) {
-        ESP_LOGE(TAG, "No client address available");
+        // ESP_LOGE(TAG, "No client address available");
         return;
     }
 
@@ -1062,7 +1062,7 @@ void udp_send_osc(OscPacket msg)
     }
 
     if (last_client_len == 0) {
-        ESP_LOGE(TAG, "No client address available");
+        // ESP_LOGE(TAG, "No client address available");
         return;
     }
 
