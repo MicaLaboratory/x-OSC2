@@ -939,18 +939,43 @@ static void udp_server_task(void *pvParameters)
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;
 
+    // Load local bind port from NVS
+    int32_t local_port = nvs_load_int("OSC", "Local_Port", 3333);
+
+    // Load remote IP + port from NVS (used for sending)
+    char *remote_ip = nvs_load_str("OSC", "Remote_IP", "0.0.0.0");
+    int32_t remote_port = nvs_load_int("OSC", "Remote_Port", 10000);
+
+    // Build last_client_addr from NVS values (IPv4 only)
+    struct sockaddr_in client_addr;
+    memset(&client_addr, 0, sizeof(client_addr));
+    client_addr.sin_family = AF_INET;
+    client_addr.sin_port   = htons(remote_port);
+
+    if (inet_aton(remote_ip, &client_addr.sin_addr) == 0) {
+        ESP_LOGE(TAG, "Invalid Remote_IP in NVS: %s", remote_ip);
+    }
+
+    free(remote_ip);
+
+    memcpy(&last_client_addr, &client_addr, sizeof(client_addr));
+    last_client_len = sizeof(client_addr);
+
     while (1) {
 
+        // Build local bind address
         if (addr_family == AF_INET) {
             struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
+            memset(dest_addr_ip4, 0, sizeof(struct sockaddr_in));
             dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
-            dest_addr_ip4->sin_family = AF_INET;
-            dest_addr_ip4->sin_port = htons(PORT);
+            dest_addr_ip4->sin_family      = AF_INET;
+            dest_addr_ip4->sin_port        = htons(local_port);
             ip_protocol = IPPROTO_IP;
-        } else if (addr_family == AF_INET6) {
-            bzero(&dest_addr.sin6_addr.un, sizeof(dest_addr.sin6_addr.un));
+
+        } else {
+            memset(&dest_addr, 0, sizeof(dest_addr));
             dest_addr.sin6_family = AF_INET6;
-            dest_addr.sin6_port = htons(PORT);
+            dest_addr.sin6_port   = htons(local_port);
             ip_protocol = IPPROTO_IPV6;
         }
 
@@ -959,167 +984,60 @@ static void udp_server_task(void *pvParameters)
             ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
             break;
         }
+
         ESP_LOGI(TAG, "Socket created");
 
-#if defined(CONFIG_LWIP_NETBUF_RECVINFO) && !defined(CONFIG_EXAMPLE_IPV6)
-        int enable = 1;
-        lwip_setsockopt(sock, IPPROTO_IP, IP_PKTINFO, &enable, sizeof(enable));
-#endif
-
-#if defined(CONFIG_EXAMPLE_IPV4) && defined(CONFIG_EXAMPLE_IPV6)
-        if (addr_family == AF_INET6) {
-            // Note that by default IPV6 binds to both protocols, it is must be disabled
-            // if both protocols used at the same time (used in CI)
-            int opt = 1;
-            setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt));
-        }
-#endif
-        // Set timeout
-        struct timeval timeout;
-        timeout.tv_sec = 10;
-        timeout.tv_usec = 0;
-        setsockopt (sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+        struct timeval timeout = { .tv_sec = 10, .tv_usec = 0 };
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
         int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
         if (err < 0) {
             ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
         }
-        ESP_LOGI(TAG, "Socket bound, port %d", PORT);
 
-        struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
+        ESP_LOGI(TAG, "Socket bound, port %d", local_port);
+
+        struct sockaddr_storage source_addr;
         socklen_t socklen = sizeof(source_addr);
-
-#if defined(CONFIG_LWIP_NETBUF_RECVINFO) && !defined(CONFIG_EXAMPLE_IPV6)
-        struct iovec iov;
-        struct msghdr msg;
-        struct cmsghdr *cmsgtmp;
-        u8_t cmsg_buf[CMSG_SPACE(sizeof(struct in_pktinfo))];
-
-        iov.iov_base = rx_buffer;
-        iov.iov_len = sizeof(rx_buffer);
-        msg.msg_control = cmsg_buf;
-        msg.msg_controllen = sizeof(cmsg_buf);
-        msg.msg_flags = 0;
-        msg.msg_iov = &iov;
-        msg.msg_iovlen = 1;
-        msg.msg_name = (struct sockaddr *)&source_addr;
-        msg.msg_namelen = socklen;
-#endif
 
         while (1) {
             ESP_LOGI(TAG, "Waiting for data");
-#if defined(CONFIG_LWIP_NETBUF_RECVINFO) && !defined(CONFIG_EXAMPLE_IPV6)
-            int len = recvmsg(sock, &msg, 0);
-#else
-            int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&source_addr, &socklen);
-#endif
-            // Error occurred during receiving
+
+            int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0,
+                               (struct sockaddr *)&source_addr, &socklen);
+
             if (len < 0) {
                 ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
                 break;
             }
-            // Data received
-            else {
-                // Get the sender's ip address as string
-                if (source_addr.ss_family == PF_INET) {
-                    inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
-#if defined(CONFIG_LWIP_NETBUF_RECVINFO) && !defined(CONFIG_EXAMPLE_IPV6)
-                    for ( cmsgtmp = CMSG_FIRSTHDR(&msg); cmsgtmp != NULL; cmsgtmp = CMSG_NXTHDR(&msg, cmsgtmp) ) {
-                        if ( cmsgtmp->cmsg_level == IPPROTO_IP && cmsgtmp->cmsg_type == IP_PKTINFO ) {
-                            struct in_pktinfo *pktinfo;
-                            pktinfo = (struct in_pktinfo*)CMSG_DATA(cmsgtmp);
-                            ESP_LOGI(TAG, "dest ip: %s", inet_ntoa(pktinfo->ipi_addr));
-                        }
-                    }
-#endif
-                } else if (source_addr.ss_family == PF_INET6) {
-                    inet6_ntoa_r(((struct sockaddr_in6 *)&source_addr)->sin6_addr, addr_str, sizeof(addr_str) - 1);
-                }
 
-                rx_buffer[len] = 0; // Null-terminate whatever we received and treat like a string...
-                ESP_LOGI(TAG, "Received %d bytes from %s:", len, addr_str);
-                ESP_LOGI(TAG, "%s", rx_buffer);
-
-                memcpy(&last_client_addr, &source_addr, sizeof(source_addr));
-                last_client_len = socklen;
-
-                                
-                int err = 0;
-                if (strcmp(rx_buffer,"/ping")==0) {
-                    // err = sendto(sock, rx_buffer, len, 0, (struct sockaddr *)&source_addr, sizeof(source_addr));
-                    sendPingMessage();
-                } else if (strncmp(rx_buffer, "/outputs/digital/", 17) == 0) {
-
-                    // Extract GPIO number from the OSC address
-                    int gpio = atoi(rx_buffer + 17);
-
-                    // Find the body (integer after the address)
-                    // Example blob: "/outputs/digital/23 1"
-                    char *space = strchr(rx_buffer, ' ');
-                    int level = 0;
-
-                    if (space != NULL) {
-                        level = atoi(space + 1);   // convert "1" or "0" to int
-                    }
-
-                    // Configure pin as output (safe to call repeatedly)
-                    gpio_config_t cfg = {
-                        .pin_bit_mask = 1ULL << gpio,
-                        .mode = GPIO_MODE_OUTPUT,
-                        .pull_up_en = GPIO_PULLUP_DISABLE,
-                        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-                        .intr_type = GPIO_INTR_DISABLE
-                    };
-                    gpio_config(&cfg);
-
-                    // Set the pin HIGH or LOW
-                    gpio_set_level(gpio, level ? 1 : 0);
-                }
-                
-                if (err < 0) {
-                    ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-                    break;
-                }
+            // Convert sender IP only for logging
+            if (source_addr.ss_family == PF_INET) {
+                inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr,
+                            addr_str, sizeof(addr_str));
+            } else {
+                inet6_ntoa_r(((struct sockaddr_in6 *)&source_addr)->sin6_addr,
+                             addr_str, sizeof(addr_str));
             }
+
+            rx_buffer[len] = 0;
+            ESP_LOGI(TAG, "Received %d bytes from %s:", len, addr_str);
+            ESP_LOGI(TAG, "%s", rx_buffer);
+
+            // Process OSC
+            OscPacket oscPacket;
+            OscPacketInitialiseFromCharArray(&oscPacket, rx_buffer, len);
+            oscPacket.processMessage = ProcessMessage;
+            OscPacketProcessMessages(&oscPacket);
         }
 
-        if (sock != -1) {
-            ESP_LOGE(TAG, "Shutting down socket and restarting...");
-            shutdown(sock, 0);
-            close(sock);
-        }
+        shutdown(sock, 0);
+        close(sock);
     }
+
     vTaskDelete(NULL);
 }
 
-void udp_send_message(const char *msg)
-{
-    if (sock < 0) {
-        ESP_LOGE(TAG, "Socket not initialized");
-        return;
-    }
-
-    if (last_client_len == 0) {
-        // ESP_LOGE(TAG, "No client address available");
-        return;
-    }
-
-    int err = sendto(
-        sock,
-        msg,
-        strlen(msg),
-        0,
-        (struct sockaddr *)&last_client_addr,
-        last_client_len
-    );
-
-    if (err < 0) {
-        ESP_LOGE(TAG, "Send failed: errno %d", errno);
-    } else {
-        // ESP_LOGI(TAG, "Sent: %s", msg);
-    }
-}
 
 void udp_send_osc(OscPacket msg)
 {
