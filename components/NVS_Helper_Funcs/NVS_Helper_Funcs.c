@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include "NVS_Helper_Funcs.h"
-#include "nvs.h"
+#include "esp_err.h"
+#include "nvs.h" 
+#include "esp_log.h"
 
 
 // Saving 
@@ -114,6 +116,8 @@ char *nvs_load_str(const char *namespace_name, const char *key, const char *defa
     nvs_close(handle);
     return value;
 }
+
+// View / Print all nvs
 
 void print_all_nvs_entries(const char *namespace) {
     

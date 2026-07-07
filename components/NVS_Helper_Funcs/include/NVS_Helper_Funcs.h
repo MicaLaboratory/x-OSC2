@@ -4,10 +4,7 @@
 
 
 #include <stdint.h>
-#include "esp_err.h"
-#include "nvs_flash.h"
-#include "nvs.h" 
-#include "esp_log.h"
+
 
 void print_all_nvs_entries(const char *namespace);
 
