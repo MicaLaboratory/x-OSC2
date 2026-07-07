@@ -1,8 +1,9 @@
 #include <stdio.h>
 #include "NVS_Helper_Funcs.h"
+#include "nvs.h"
 
 
-// NVS 
+// Saving 
 void nvs_save_int(const char *namespace_name, const char *key, int32_t value)
 {
     nvs_handle_t handle;
@@ -13,12 +14,14 @@ void nvs_save_int(const char *namespace_name, const char *key, int32_t value)
     }
 
     err = nvs_set_i32(handle, key, value);
-    if (err == ESP_OK) {
-        nvs_commit(handle);
-        ESP_LOGI("NVS", "Saved %s = %ld", key, value);
-    } else {
+    if (err != ESP_OK){
         ESP_LOGE("NVS", "Failed to save %s: %s", key, esp_err_to_name(err));
+        nvs_close(handle);
+        return;
     }
+
+    nvs_commit(handle);
+    ESP_LOGI("NVS", "Saved %s = \"%s\"", key, value);
 
     nvs_close(handle);
 }
@@ -26,6 +29,7 @@ void nvs_save_int(const char *namespace_name, const char *key, int32_t value)
 void nvs_save_str(const char *namespace_name, const char *key, const char *value)
 {
     nvs_handle_t handle;
+
     esp_err_t err = nvs_open(namespace_name, NVS_READWRITE, &handle);
     if (err != ESP_OK) {
         ESP_LOGE("NVS", "Error opening NVS: %s", esp_err_to_name(err));
@@ -33,16 +37,19 @@ void nvs_save_str(const char *namespace_name, const char *key, const char *value
     }
 
     err = nvs_set_str(handle, key, value);
-    if (err == ESP_OK) {
-        nvs_commit(handle);
-        ESP_LOGI("NVS", "Saved %s = \"%s\"", key, value);
-    } else {
+    if (err != ESP_OK){
         ESP_LOGE("NVS", "Failed to save %s: %s", key, esp_err_to_name(err));
+        nvs_close(handle);
+        return;
     }
+
+    nvs_commit(handle);
+    ESP_LOGI("NVS", "Saved %s = \"%s\"", key, value);
 
     nvs_close(handle);
 }
 
+// Loading
 int32_t nvs_load_int(const char *namespace_name, const char *key, int32_t default_value)
 {
     nvs_handle_t handle;
