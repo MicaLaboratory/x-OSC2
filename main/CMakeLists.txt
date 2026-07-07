@@ -1,3 +1,3 @@
 idf_component_register(SRCS "main.c"
-                    REQUIRES nvs_flash esp_driver_gpio esp_wifi esp_http_server cjson OSC99 esp_adc
+                    REQUIRES NVS_Helper_Funcs esp_driver_gpio esp_wifi esp_http_server cjson OSC99 esp_adc
                     INCLUDE_DIRS ".")
