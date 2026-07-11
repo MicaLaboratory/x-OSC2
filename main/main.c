@@ -47,14 +47,8 @@
 
 #include "NVS_Helper_Funcs.h"
 
-#define PLACEHOLDER 0
 #define PINCOUNT 28
 #define MAX_ATTEMPS 10
-
-/* STA Configuration */
-#define EXAMPLE_ESP_WIFI_STA_SSID CONFIG_ESP_WIFI_REMOTE_AP_SSID
-#define EXAMPLE_ESP_WIFI_STA_PASSWD CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD
-#define EXAMPLE_ESP_MAXIMUM_RETRY CONFIG_ESP_MAXIMUM_STA_RETRY
 
 #if CONFIG_ESP_WIFI_AUTH_OPEN
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_OPEN
@@ -102,22 +96,22 @@ void init_default_Config()
 {
 
     // Set Default Network Settings
-    nvs_save_int("Config", "Network", AP);
+    ESP_ERROR_CHECK(nvs_save_int("Config", "Network", AP));
     // AP
-    nvs_save_str("AP", "SSID", CONFIG_ESP_WIFI_AP_SSID);
-    nvs_save_str("AP", "Passphrase", CONFIG_ESP_WIFI_AP_PASSWORD);
+    ESP_ERROR_CHECK(nvs_save_str("AP", "SSID", CONFIG_ESP_WIFI_AP_SSID));
+    ESP_ERROR_CHECK(nvs_save_str("AP", "Passphrase", CONFIG_ESP_WIFI_AP_PASSWORD));
     // STA
-    nvs_save_str("STA", "SSID", CONFIG_ESP_WIFI_REMOTE_AP_SSID);
-    nvs_save_str("STA", "Passphrase", CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
+    ESP_ERROR_CHECK(nvs_save_str("STA", "SSID", CONFIG_ESP_WIFI_REMOTE_AP_SSID));
+    ESP_ERROR_CHECK(nvs_save_str("STA", "Passphrase", CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD));
 
     // Sets OSC message settings
-    nvs_save_str("OSC", "Remote_IP", CONFIG_ESP_OSC_REMOTE_IP);
-    nvs_save_int("OSC", "Remote_Port", CONFIG_ESP_OSC_REMOTE_PORT);
-    nvs_save_str("OSC", "Local_IP", CONFIG_ESP_OSC_LOCAL_IP);
-    nvs_save_int("OSC", "Local_Port", CONFIG_ESP_OSC_LOCAL_PORT);
+    ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", CONFIG_ESP_OSC_REMOTE_IP));
+    ESP_ERROR_CHECK(nvs_save_int("OSC", "Remote_Port", CONFIG_ESP_OSC_REMOTE_PORT));
+    ESP_ERROR_CHECK(nvs_save_str("OSC", "Local_IP", CONFIG_ESP_OSC_LOCAL_IP));
+    ESP_ERROR_CHECK(nvs_save_int("OSC", "Local_Port", CONFIG_ESP_OSC_LOCAL_PORT));
 
-    nvs_save_int("OSC", "Bundles", 0);
-    nvs_save_int("OSC", "address_Prefix", 0);
+    ESP_ERROR_CHECK(nvs_save_int("OSC", "Bundles", 0));
+    ESP_ERROR_CHECK(nvs_save_int("OSC", "address_Prefix", 0));
 
     // GPIO defaults
     for (int i = 1; i < PINCOUNT + 1; i++)
@@ -130,10 +124,10 @@ void init_default_Config()
         snprintf(key_io, sizeof(key_io), "Pin-%d-IO", i);
 
         // Default mode = OFF (0)
-        nvs_save_int("Pins", key_mode, 0);
+        ESP_ERROR_CHECK(nvs_save_int("Pins", key_mode, 0));
 
         // Default IO = OUTPUT (0)
-        nvs_save_int("Pins", key_io, 0);
+        ESP_ERROR_CHECK(nvs_save_int("Pins", key_io, 0));
     }
 }
 
@@ -179,7 +173,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
         ESP_LOGW(TAG_STA, "STA disconnected, reason: %d", event->reason);
 
-        if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY)
+        if (s_retry_num < CONFIG_ESP_MAXIMUM_STA_RETRY)
         {
             esp_wifi_connect();
             s_retry_num++;
@@ -237,13 +231,13 @@ void wifi_init_sta(void)
 {
     // esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
 
-    char *SSID = nvs_load_str("STA", "SSID", EXAMPLE_ESP_WIFI_STA_SSID);
-    char *PASS = nvs_load_str("STA", "Passphrase", EXAMPLE_ESP_WIFI_STA_PASSWD);
+    char *SSID = nvs_load_str("STA", "SSID", CONFIG_ESP_WIFI_REMOTE_AP_SSID);
+    char *PASS = nvs_load_str("STA", "Passphrase", CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
 
     wifi_config_t wifi_sta_config = {
         .sta = {
             .scan_method = WIFI_ALL_CHANNEL_SCAN,
-            .failure_retry_cnt = EXAMPLE_ESP_MAXIMUM_RETRY,
+            .failure_retry_cnt = CONFIG_ESP_MAXIMUM_STA_RETRY,
             .threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
             .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
         },
@@ -318,7 +312,7 @@ static esp_err_t base_handler(httpd_req_t *req)
 
 static esp_err_t Conf_Reset(httpd_req_t *req)
 {
-    nvs_save_int("Config", "Network", -1);
+    ESP_ERROR_CHECK(nvs_save_int("Config", "Network", -1));
     esp_restart();
     return ESP_OK;
 }
@@ -347,11 +341,11 @@ static esp_err_t Network_Handler(httpd_req_t *req)
 
     if (isAP)
     {
-        nvs_save_int("Config", "Network", AP);
+        ESP_ERROR_CHECK(nvs_save_int("Config", "Network", AP));
     }
     else if (isSTA)
     {
-        nvs_save_int("Config", "Network", STA);
+        ESP_ERROR_CHECK(nvs_save_int("Config", "Network", STA));
     }
     else
     {
@@ -386,11 +380,11 @@ static esp_err_t Network_Handler(httpd_req_t *req)
     char STA_Password[64];
     strcpy(STA_Password, value);
 
-    nvs_save_str("AP", "SSID", AP_SSID);
-    nvs_save_str("AP", "Passphrase", AP_Password);
+    ESP_ERROR_CHECK(nvs_save_str("AP", "SSID", AP_SSID));
+    ESP_ERROR_CHECK(nvs_save_str("AP", "Passphrase", AP_Password));
     // STA
-    nvs_save_str("STA", "SSID", STA_SSID);
-    nvs_save_str("STA", "Passphrase", STA_Password);
+    ESP_ERROR_CHECK(nvs_save_str("STA", "SSID", STA_SSID));
+    ESP_ERROR_CHECK(nvs_save_str("STA", "Passphrase", STA_Password));
 
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "/");
@@ -442,11 +436,11 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
     int local_port = atoi(value);
 
     // --- Save to NVS ---
-    nvs_save_str("OSC", "Remote_IP", remote_ip);
-    nvs_save_int("OSC", "Remote_Port", remote_port);
+    ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", remote_ip));
+    ESP_ERROR_CHECK(nvs_save_int("OSC", "Remote_Port", remote_port));
 
-    nvs_save_str("OSC", "Local_IP", local_ip);
-    nvs_save_int("OSC", "Local_Port", local_port);
+    ESP_ERROR_CHECK(nvs_save_str("OSC", "Local_IP", local_ip));
+    ESP_ERROR_CHECK(nvs_save_int("OSC", "Local_Port", local_port));
 
     // Respond immediately so browser stops loading
     httpd_resp_set_type(req, "text/plain");
@@ -500,7 +494,7 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
             int mode = atoi(value);
             if (mode < 0 || mode > 2)
                 mode = 0;
-            nvs_save_int("Pins", key_mode, mode);
+            ESP_ERROR_CHECK(nvs_save_int("Pins", key_mode, mode));
         }
 
         // --- IO ---
@@ -509,7 +503,7 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
             int io = atoi(value);
             if (io < 0 || io > 1)
                 io = 0;
-            nvs_save_int("Pins", key_io, io);
+            ESP_ERROR_CHECK(nvs_save_int("Pins", key_io, io));
         }
     }
 
@@ -1174,7 +1168,7 @@ void app_main(void)
 
 
     
-    nvs_save_int("test", "count", 123);
+    ESP_ERROR_CHECK(nvs_save_int("test", "count", 123));
     int32_t v = nvs_load_int("test", "count", -1);
     ESP_LOGI("NVS", "Loaded count = %" PRId32, v);
 
@@ -1255,15 +1249,15 @@ void app_main(void)
         if (bits & WIFI_CONNECTED_BIT)
         {
             ESP_LOGI(TAG_STA, "connected to ap SSID:%s password:%s",
-                     EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
+                     CONFIG_ESP_WIFI_REMOTE_AP_SSID, CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
             // If you ever run AP+STA, only then call:
             // softap_set_dns_addr(ap, sta);
         }
         else if (bits & WIFI_FAIL_BIT)
         {
             ESP_LOGE(TAG_STA, "Failed to connect to SSID:%s, password:%s",
-                     EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
-            nvs_save_int("Config", "Network", AP);
+                     CONFIG_ESP_WIFI_REMOTE_AP_SSID, CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
+            ESP_ERROR_CHECK(nvs_save_int("Config", "Network", AP));
             esp_restart();
         }
         else
