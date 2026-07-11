@@ -5,9 +5,9 @@
 #include "OscMessage.h"
 #include "esp_err.h"
 #include "nvs_flash.h"
-#include "nvs.h" 
+#include "nvs.h"
 #include "main.h"
-#include "esp_log.h"
+
 #include "esp_system.h"
 #include "driver/gpio.h"
 #include "esp_wifi.h"
@@ -45,232 +45,89 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
+#include "NVS_Helper_Funcs.h"
 
 #define PLACEHOLDER 0
 #define PINCOUNT 28
 #define MAX_ATTEMPS 10
 
-
 /* STA Configuration */
-#define EXAMPLE_ESP_WIFI_STA_SSID           CONFIG_ESP_WIFI_REMOTE_AP_SSID
-#define EXAMPLE_ESP_WIFI_STA_PASSWD         CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD
-#define EXAMPLE_ESP_MAXIMUM_RETRY           CONFIG_ESP_MAXIMUM_STA_RETRY
+#define EXAMPLE_ESP_WIFI_STA_SSID CONFIG_ESP_WIFI_REMOTE_AP_SSID
+#define EXAMPLE_ESP_WIFI_STA_PASSWD CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD
+#define EXAMPLE_ESP_MAXIMUM_RETRY CONFIG_ESP_MAXIMUM_STA_RETRY
 
 #if CONFIG_ESP_WIFI_AUTH_OPEN
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD   WIFI_AUTH_OPEN
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_OPEN
 #elif CONFIG_ESP_WIFI_AUTH_WEP
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD   WIFI_AUTH_WEP
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WEP
 #elif CONFIG_ESP_WIFI_AUTH_WPA_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD   WIFI_AUTH_WPA_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA_PSK
 #elif CONFIG_ESP_WIFI_AUTH_WPA2_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD   WIFI_AUTH_WPA2_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
 #elif CONFIG_ESP_WIFI_AUTH_WPA_WPA2_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD   WIFI_AUTH_WPA_WPA2_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA_WPA2_PSK
 #elif CONFIG_ESP_WIFI_AUTH_WPA3_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD   WIFI_AUTH_WPA3_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA3_PSK
 #elif CONFIG_ESP_WIFI_AUTH_WPA2_WPA3_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD   WIFI_AUTH_WPA2_WPA3_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_WPA3_PSK
 #elif CONFIG_ESP_WIFI_AUTH_WAPI_PSK
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD   WIFI_AUTH_WAPI_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
 #endif
 
 /* AP Configuration */
-#define EXAMPLE_ESP_WIFI_AP_SSID            CONFIG_ESP_WIFI_AP_SSID
-#define EXAMPLE_ESP_WIFI_AP_PASSWD          CONFIG_ESP_WIFI_AP_PASSWORD
-#define EXAMPLE_ESP_WIFI_CHANNEL            CONFIG_ESP_WIFI_AP_CHANNEL
-#define EXAMPLE_MAX_STA_CONN                CONFIG_ESP_MAX_STA_CONN_AP
-
+#define EXAMPLE_ESP_WIFI_AP_SSID CONFIG_ESP_WIFI_AP_SSID
+#define EXAMPLE_ESP_WIFI_AP_PASSWD CONFIG_ESP_WIFI_AP_PASSWORD
+#define EXAMPLE_ESP_WIFI_CHANNEL CONFIG_ESP_WIFI_AP_CHANNEL
+#define EXAMPLE_MAX_STA_CONN CONFIG_ESP_MAX_STA_CONN_AP
 
 /* The event group allows multiple bits for each event, but we only care about two events:
  * - we are connected to the AP with an IP
  * - we failed to connect after the maximum amount of retries */
 #define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT      BIT1
+#define WIFI_FAIL_BIT BIT1
 
 /*DHCP server option*/
-#define DHCPS_OFFER_DNS             0x02
-
+#define DHCPS_OFFER_DNS 0x02
 
 static const char *TAG_AP = "WiFi SoftAP";
 static const char *TAG_STA = "WiFi Sta";
 
 static int s_retry_num = 0;
 
-//Helper funcs
+// Helper funcs
 char *getCurrentIP();
 
-
-// NVS 
-void nvs_save_int(const char *namespace_name, const char *key, int32_t value)
-{
-    nvs_handle_t handle;
-    esp_err_t err = nvs_open(namespace_name, NVS_READWRITE, &handle);
-    if (err != ESP_OK) {
-        ESP_LOGE("NVS", "Error opening NVS: %s", esp_err_to_name(err));
-        return;
-    }
-
-    err = nvs_set_i32(handle, key, value);
-    if (err == ESP_OK) {
-        nvs_commit(handle);
-        ESP_LOGI("NVS", "Saved %s = %ld", key, value);
-    } else {
-        ESP_LOGE("NVS", "Failed to save %s: %s", key, esp_err_to_name(err));
-    }
-
-    nvs_close(handle);
-}
-
-void nvs_save_str(const char *namespace_name, const char *key, const char *value)
-{
-    nvs_handle_t handle;
-    esp_err_t err = nvs_open(namespace_name, NVS_READWRITE, &handle);
-    if (err != ESP_OK) {
-        ESP_LOGE("NVS", "Error opening NVS: %s", esp_err_to_name(err));
-        return;
-    }
-
-    err = nvs_set_str(handle, key, value);
-    if (err == ESP_OK) {
-        nvs_commit(handle);
-        ESP_LOGI("NVS", "Saved %s = \"%s\"", key, value);
-    } else {
-        ESP_LOGE("NVS", "Failed to save %s: %s", key, esp_err_to_name(err));
-    }
-
-    nvs_close(handle);
-}
-
-int32_t nvs_load_int(const char *namespace_name, const char *key, int32_t default_value)
-{
-    nvs_handle_t handle;
-    esp_err_t err = nvs_open(namespace_name, NVS_READONLY, &handle);
-    if (err != ESP_OK) {
-        ESP_LOGW("NVS", "Namespace not found, using default");
-        return default_value;
-    }
-
-    int32_t value = default_value;
-    err = nvs_get_i32(handle, key, &value);
-
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGW("NVS", "Key %s not found, using default", key);
-    } else if (err != ESP_OK) {
-        ESP_LOGE("NVS", "Error reading %s: %s", key, esp_err_to_name(err));
-    }
-
-    nvs_close(handle);
-    return value;
-}
-
-char *nvs_load_str(const char *namespace_name, const char *key, const char *default_value)
-{
-    nvs_handle_t handle;
-    esp_err_t err = nvs_open(namespace_name, NVS_READONLY, &handle);
-    if (err != ESP_OK) {
-        ESP_LOGW("NVS", "Namespace not found, using default");
-        return strdup(default_value);
-    }
-
-    size_t len = 0;
-    err = nvs_get_str(handle, key, NULL, &len);
-
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGW("NVS", "Key %s not found, using default", key);
-        nvs_close(handle);
-        return strdup(default_value);
-    }
-
-    if (err != ESP_OK) {
-        ESP_LOGE("NVS", "Error reading %s: %s", key, esp_err_to_name(err));
-        nvs_close(handle);
-        return strdup(default_value);
-    }
-
-    char *value = malloc(len);
-    if (!value) {
-        ESP_LOGE("NVS", "Out of memory");
-        nvs_close(handle);
-        return strdup(default_value);
-    }
-
-    err = nvs_get_str(handle, key, value, &len);
-    if (err != ESP_OK) {
-        ESP_LOGE("NVS", "Error reading %s: %s", key, esp_err_to_name(err));
-        free(value);
-        nvs_close(handle);
-        return strdup(default_value);
-    }
-
-    nvs_close(handle);
-    return value;
-}
-
-void print_all_nvs_entries(const char *namespace) {
-    
-    nvs_iterator_t it = NULL;
-    esp_err_t err = nvs_entry_find("nvs", namespace, NVS_TYPE_ANY, &it);
-
-    while (err == ESP_OK && it != NULL) {
-        nvs_entry_info_t info;
-        nvs_entry_info(it, &info);
-        printf("Key: %s, Type: %d\n", info.key, info.type);
-
-        // If you want to read the value:
-        nvs_handle_t handle;
-        if (nvs_open(namespace, NVS_READONLY, &handle) == ESP_OK) {
-            if (info.type == NVS_TYPE_STR) {
-                size_t len;
-                nvs_get_str(handle, info.key, NULL, &len);
-                char *value = malloc(len);
-                if (value) {
-                    nvs_get_str(handle, info.key, value, &len);
-                    printf("  Value: %s\n", value);
-                    free(value);
-                }
-            } else if (info.type == NVS_TYPE_I32) {
-                int32_t val;
-                nvs_get_i32(handle, info.key, &val);
-                printf("  Value: %" PRId32 "\n", val);
-            }
-            nvs_close(handle);
-        }
-
-        err = nvs_entry_next(&it);
-    }
-    nvs_release_iterator(it);
-}
-
 // DefaultS
-void init_default_Config(){
+void init_default_Config()
+{
 
     // Set Default Network Settings
-    nvs_save_int("Config","Network",AP);
+    nvs_save_int("Config", "Network", AP);
     // AP
-    nvs_save_str("AP","SSID",CONFIG_ESP_WIFI_AP_SSID);
-    nvs_save_str("AP","Passphrase",CONFIG_ESP_WIFI_AP_PASSWORD);
+    nvs_save_str("AP", "SSID", CONFIG_ESP_WIFI_AP_SSID);
+    nvs_save_str("AP", "Passphrase", CONFIG_ESP_WIFI_AP_PASSWORD);
     // STA
-    nvs_save_str("STA","SSID",CONFIG_ESP_WIFI_REMOTE_AP_SSID);
-    nvs_save_str("STA","Passphrase",CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
+    nvs_save_str("STA", "SSID", CONFIG_ESP_WIFI_REMOTE_AP_SSID);
+    nvs_save_str("STA", "Passphrase", CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
 
     // Sets OSC message settings
-    nvs_save_str("OSC","Remote_IP",CONFIG_ESP_OSC_REMOTE_IP);
-    nvs_save_int("OSC","Remote_Port",CONFIG_ESP_OSC_REMOTE_PORT);
-    nvs_save_str("OSC","Local_IP",CONFIG_ESP_OSC_LOCAL_IP);
-    nvs_save_int("OSC","Local_Port",CONFIG_ESP_OSC_LOCAL_PORT);
+    nvs_save_str("OSC", "Remote_IP", CONFIG_ESP_OSC_REMOTE_IP);
+    nvs_save_int("OSC", "Remote_Port", CONFIG_ESP_OSC_REMOTE_PORT);
+    nvs_save_str("OSC", "Local_IP", CONFIG_ESP_OSC_LOCAL_IP);
+    nvs_save_int("OSC", "Local_Port", CONFIG_ESP_OSC_LOCAL_PORT);
 
-    nvs_save_int("OSC","Bundles",0);
-    nvs_save_int("OSC","address_Prefix",0);
+    nvs_save_int("OSC", "Bundles", 0);
+    nvs_save_int("OSC", "address_Prefix", 0);
 
-     
     // GPIO defaults
-    for (int i = 1; i < PINCOUNT+1; i++) {
+    for (int i = 1; i < PINCOUNT + 1; i++)
+    {
 
         char key_mode[32];
         char key_io[32];
 
         snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
-        snprintf(key_io,   sizeof(key_io),   "Pin-%d-IO",    i);
+        snprintf(key_io, sizeof(key_io), "Pin-%d-IO", i);
 
         // Default mode = OFF (0)
         nvs_save_int("Pins", key_mode, 0);
@@ -278,12 +135,7 @@ void init_default_Config(){
         // Default IO = OUTPUT (0)
         nvs_save_int("Pins", key_io, 0);
     }
-    
-
-
-
 }
-
 
 /* FreeRTOS event group to signal when we are connected/disconnected */
 static EventGroupHandle_t s_wifi_event_group;
@@ -291,41 +143,54 @@ static EventGroupHandle_t s_wifi_event_group;
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data)
 {
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED) {
-        wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *) event_data;
-        ESP_LOGI(TAG_AP, "Station "MACSTR" joined, AID=%d",
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED)
+    {
+        wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *)event_data;
+        ESP_LOGI(TAG_AP, "Station " MACSTR " joined, AID=%d",
                  MAC2STR(event->mac), event->aid);
-    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STADISCONNECTED) {
-        wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t *) event_data;
-        ESP_LOGI(TAG_AP, "Station "MACSTR" left, AID=%d, reason:%d",
+    }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STADISCONNECTED)
+    {
+        wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t *)event_data;
+        ESP_LOGI(TAG_AP, "Station " MACSTR " left, AID=%d, reason:%d",
                  MAC2STR(event->mac), event->aid, event->reason);
-    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+    }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
+    {
         esp_wifi_connect();
         ESP_LOGI(TAG_STA, "Station started");
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
+    }
+    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
+    {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG_STA, "Got IP:" IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_ASSIGNED_IP_TO_CLIENT) {
+    }
+    else if (event_base == IP_EVENT && event_id == IP_EVENT_ASSIGNED_IP_TO_CLIENT)
+    {
         const ip_event_assigned_ip_to_client_t *e = (const ip_event_assigned_ip_to_client_t *)event_data;
         ESP_LOGI(TAG_AP, "Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'",
                  IP2STR(&e->ip), MAC2STR(e->mac), e->hostname);
-    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-    wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
-
-    ESP_LOGW(TAG_STA, "STA disconnected, reason: %d", event->reason);
-
-    if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
-        esp_wifi_connect();
-        s_retry_num++;
-        ESP_LOGI(TAG_STA, "Retrying connection...");
-    } else {
-        ESP_LOGE(TAG_STA, "Max retries reached, switching to AP mode");
-        xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
     }
-    }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
+    {
+        wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
 
+        ESP_LOGW(TAG_STA, "STA disconnected, reason: %d", event->reason);
+
+        if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY)
+        {
+            esp_wifi_connect();
+            s_retry_num++;
+            ESP_LOGI(TAG_STA, "Retrying connection...");
+        }
+        else
+        {
+            ESP_LOGE(TAG_STA, "Max retries reached, switching to AP mode");
+            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+        }
+    }
 }
 
 /* Initialize soft AP */
@@ -334,18 +199,20 @@ void wifi_init_softap(void)
     char *SSID = nvs_load_str("AP", "SSID", EXAMPLE_ESP_WIFI_AP_SSID);
     char *PASS = nvs_load_str("AP", "Passphrase", EXAMPLE_ESP_WIFI_AP_PASSWD);
 
-    wifi_config_t wifi_ap_config = { 0 };   // zero-initialise
+    wifi_config_t wifi_ap_config = {0}; // zero-initialise
 
     // Copy SSID (max 32 bytes)
     size_t ssid_len = strlen(SSID);
-    if (ssid_len > 32) ssid_len = 32;
+    if (ssid_len > 32)
+        ssid_len = 32;
 
     memcpy(wifi_ap_config.ap.ssid, SSID, ssid_len);
     wifi_ap_config.ap.ssid_len = ssid_len;
 
     // Copy password (max 64 bytes)
     size_t pass_len = strlen(PASS);
-    if (pass_len > 64) pass_len = 64;
+    if (pass_len > 64)
+        pass_len = 64;
 
     memcpy(wifi_ap_config.ap.password, PASS, pass_len);
 
@@ -364,7 +231,6 @@ void wifi_init_softap(void)
     free(SSID);
     free(PASS);
 }
-
 
 /* Initialize wifi station */
 void wifi_init_sta(void)
@@ -385,13 +251,18 @@ void wifi_init_sta(void)
 
     // Copy SSID (max 32 bytes)
     size_t ssid_len = strlen(SSID);
-    if (ssid_len > 32) ssid_len = 32;
+    if (ssid_len > 32)
+        ssid_len = 32;
     memcpy(wifi_sta_config.sta.ssid, SSID, ssid_len);
 
     // Copy password (max 64 bytes)
     size_t pass_len = strlen(PASS);
-    if (pass_len > 64) pass_len = 64;
+    if (pass_len > 64)
+        pass_len = 64;
     memcpy(wifi_sta_config.sta.password, PASS, pass_len);
+
+    ESP_LOGE("SSID","%s",SSID);
+    ESP_LOGE("PASS","%s",PASS);
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config));
 
@@ -404,11 +275,10 @@ void wifi_init_sta(void)
     // return esp_netif_sta;
 }
 
-
-void softap_set_dns_addr(esp_netif_t *esp_netif_ap,esp_netif_t *esp_netif_sta)
+void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_netif_sta)
 {
     esp_netif_dns_info_t dns;
-    esp_netif_get_dns_info(esp_netif_sta,ESP_NETIF_DNS_MAIN,&dns);
+    esp_netif_get_dns_info(esp_netif_sta, ESP_NETIF_DNS_MAIN, &dns);
     uint8_t dhcps_offer_option = DHCPS_OFFER_DNS;
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_stop(esp_netif_ap));
     ESP_ERROR_CHECK(esp_netif_dhcps_option(esp_netif_ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &dhcps_offer_option, sizeof(dhcps_offer_option)));
@@ -427,7 +297,8 @@ void handler(httpd_req_t *req)
 
     getpeername(sockfd, (struct sockaddr *)&addr, &addr_len);
 
-    if (addr.ss_family == AF_INET) {
+    if (addr.ss_family == AF_INET)
+    {
         struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
         char ip[16];
         inet_ntop(AF_INET, &addr_in->sin_addr, ip, sizeof(ip));
@@ -436,29 +307,30 @@ void handler(httpd_req_t *req)
     }
 }
 
-
 /* An HTTP GET handler */
 static esp_err_t base_handler(httpd_req_t *req)
 {
     print_all_nvs_entries("Global-Config");
-    const char* resp_str = "<head><style>tr,th,td {    border:1px solid black;}</style></head><body><script>function updateGPIOFromJSON(data) {    if (!data || !data.pins) {        console.error(\"Invalid GPIO JSON:\", data);        return;    }    const pins = data.pins;    Object.keys(pins).forEach(pinNum => {        const pinData = pins[pinNum];        const modeSelect = document.querySelector(`select[name=\"pin${pinNum}\"]`);        if (modeSelect) {            modeSelect.value = String(pinData.mode);        }        const ioSelect = document.querySelector(`select[name=\"pin${pinNum}-io\"]`);        if (ioSelect) {            ioSelect.value = String(pinData.io);        }    });}function updateNetworkFromJSON(data) {    if (!data) {        console.error(\"Invalid Network JSON:\", data);        return;    }        const modeAP  = document.querySelector('input[name=\"mode\"][value=\"AP\"]');    const modeSTA = document.querySelector('input[name=\"mode\"][value=\"STA\"]');    if (data.mode === \"AP\" && modeAP)  modeAP.checked = true;    if (data.mode === \"STA\" && modeSTA) modeSTA.checked = true;        const apSSID = document.querySelector('input[name=\"AP-SSID\"]');    const apPass = document.querySelector('input[name=\"AP-Password\"]');    if (apSSID) apSSID.value = data.AP_SSID || \"\";    if (apPass) apPass.value = data.AP_Password || \"\";        const staSSID = document.querySelector('input[name=\"STA-SSID\"]');    const staPass = document.querySelector('input[name=\"STA-Password\"]');    if (staSSID) staSSID.value = data.STA_SSID || \"\";    if (staPass) staPass.value = data.STA_Password || \"\";}function updateOSCFromJSON(data) {    if (!data) {        console.error(\"Invalid OSC JSON:\", data);        return;    }    const remoteIP   = document.querySelector('input[name=\"OSC-Remote\"]');    const remotePort = document.querySelector('input[name=\"OSC-Remote-Port\"]');    const localIP    = document.querySelector('input[name=\"OSC-Local\"]');    const localPort  = document.querySelector('input[name=\"OSC-Local-Port\"]');    if (remoteIP)   remoteIP.value   = data.remote_ip   || \"\";    if (remotePort) remotePort.value = data.remote_port || \"\";    if (localIP)    localIP.value    = data.local_ip    || \"\";    if (localPort)  localPort.value  = data.local_port  || \"\";}document.addEventListener(\"DOMContentLoaded\", () => {    fetch(\"/gpio.json\")        .then(res => res.json())        .then(json => updateGPIOFromJSON(json))        .catch(err => console.error(\"Failed to load GPIO JSON:\", err));            fetch(\"/network.json\")        .then(res => res.json())        .then(json => updateNetworkFromJSON(json))        .catch(err => console.error(\"Failed to load Network JSON:\", err));        fetch(\"/osc.json\")        .then(res => res.json())        .then(json => updateOSCFromJSON(json))        .catch(err => console.error(\"Failed to load OSC JSON:\", err));});</script><section>    <h1>Network</h1>    <form method=\"get\" action=\"/network\">        <p>Network Type:</p>    <input type=\"radio\" name=\"mode\" value=\"AP\"> Self Host    <input type=\"radio\" name=\"mode\" value=\"STA\"> Join Network    <br>    <!-- AP -->    <label for=\"AP-SSID\">SSID</label>    <input type=\"text\" name=\"AP-SSID\">    <br>    <label for=\"AP-Password\">Password</label>    <input type=\"text\" name=\"AP-Password\">    <br>    <!-- STA -->    <label for=\"STA-SSID\">SSID</label>    <input type=\"text\" name=\"STA-SSID\">    <br>    <label for=\"STA-Password\">Password</label>    <input type=\"text\" name=\"STA-Password\">    <br>    <button type=\"submit\" style=\"column-span: 3;\">Update Network Configuration</button>            </form>    </section><section>    <h1>OSC</h1>    <form method=\"get\" action=\"/OSC\">    <!-- OSC -->    <label for=\"OSC-Remote\">Remote IP</label>    <input type=\"text\" name=\"OSC-Remote\">    <label for=\"OSC-Remote-Port\">Port:</label>    <input type=\"number\" name=\"OSC-Remote-Port\">    <br>    <label for=\"OSC-Local\">Local IP</label>    <input type=\"text\" name=\"OSC-Local\">    <label for=\"OSC-Local-Port\">Port:</label>    <input type=\"number\" name=\"OSC-Local-Port\">    <br>    <button type=\"submit\" style=\"column-span: 3;\">Update OSC Configuration</button>            </form>    </section><section><h1>GPIO</h1>    <form method=\"post\" action=\"/GPIO\"> <table><tr><td>Pin - 1</td><td><select name=\"pin1\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin1-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 2</td><td><select name=\"pin2\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin2-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 3</td><td><select name=\"pin3\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin3-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 4</td><td><select name=\"pin4\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin4-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 5</td><td><select name=\"pin5\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin5-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 6</td><td><select name=\"pin6\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin6-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 7</td><td><select name=\"pin7\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin7-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 8</td><td><select name=\"pin8\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin8-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 9</td><td><select name=\"pin9\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin9-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 10</td><td><select name=\"pin10\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin10-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 11</td><td><select name=\"pin11\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin11-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 12</td><td><select name=\"pin12\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin12-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 13</td><td><select name=\"pin13\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin13-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 14</td><td><select name=\"pin14\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin14-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 15</td><td><select name=\"pin15\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin15-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 16</td><td><select name=\"pin16\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin16-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 17</td><td><select name=\"pin17\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin17-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 18</td><td><select name=\"pin18\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin18-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 19</td><td><select name=\"pin19\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin19-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 20</td><td><select name=\"pin20\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin20-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 21</td><td><select name=\"pin21\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin21-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 22</td><td><select name=\"pin22\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin22-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 23</td><td><select name=\"pin23\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin23-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 24</td><td><select name=\"pin24\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin24-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 25</td><td><select name=\"pin25\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin25-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 26</td><td><select name=\"pin26\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin26-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 27</td><td><select name=\"pin27\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin27-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 28</td><td><select name=\"pin28\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin28-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr></table><button type=\"submit\">Save </button></form></body>   ";
+    const char *resp_str = "<head><style>tr,th,td {    border:1px solid black;}</style></head><body><script>function updateGPIOFromJSON(data) {    if (!data || !data.pins) {        console.error(\"Invalid GPIO JSON:\", data);        return;    }    const pins = data.pins;    Object.keys(pins).forEach(pinNum => {        const pinData = pins[pinNum];        const modeSelect = document.querySelector(`select[name=\"pin${pinNum}\"]`);        if (modeSelect) {            modeSelect.value = String(pinData.mode);        }        const ioSelect = document.querySelector(`select[name=\"pin${pinNum}-io\"]`);        if (ioSelect) {            ioSelect.value = String(pinData.io);        }    });}function updateNetworkFromJSON(data) {    if (!data) {        console.error(\"Invalid Network JSON:\", data);        return;    }        const modeAP  = document.querySelector('input[name=\"mode\"][value=\"AP\"]');    const modeSTA = document.querySelector('input[name=\"mode\"][value=\"STA\"]');    if (data.mode === \"AP\" && modeAP)  modeAP.checked = true;    if (data.mode === \"STA\" && modeSTA) modeSTA.checked = true;        const apSSID = document.querySelector('input[name=\"AP-SSID\"]');    const apPass = document.querySelector('input[name=\"AP-Password\"]');    if (apSSID) apSSID.value = data.AP_SSID || \"\";    if (apPass) apPass.value = data.AP_Password || \"\";        const staSSID = document.querySelector('input[name=\"STA-SSID\"]');    const staPass = document.querySelector('input[name=\"STA-Password\"]');    if (staSSID) staSSID.value = data.STA_SSID || \"\";    if (staPass) staPass.value = data.STA_Password || \"\";}function updateOSCFromJSON(data) {    if (!data) {        console.error(\"Invalid OSC JSON:\", data);        return;    }    const remoteIP   = document.querySelector('input[name=\"OSC-Remote\"]');    const remotePort = document.querySelector('input[name=\"OSC-Remote-Port\"]');    const localIP    = document.querySelector('input[name=\"OSC-Local\"]');    const localPort  = document.querySelector('input[name=\"OSC-Local-Port\"]');    if (remoteIP)   remoteIP.value   = data.remote_ip   || \"\";    if (remotePort) remotePort.value = data.remote_port || \"\";    if (localIP)    localIP.value    = data.local_ip    || \"\";    if (localPort)  localPort.value  = data.local_port  || \"\";}document.addEventListener(\"DOMContentLoaded\", () => {    fetch(\"/gpio.json\")        .then(res => res.json())        .then(json => updateGPIOFromJSON(json))        .catch(err => console.error(\"Failed to load GPIO JSON:\", err));            fetch(\"/network.json\")        .then(res => res.json())        .then(json => updateNetworkFromJSON(json))        .catch(err => console.error(\"Failed to load Network JSON:\", err));        fetch(\"/osc.json\")        .then(res => res.json())        .then(json => updateOSCFromJSON(json))        .catch(err => console.error(\"Failed to load OSC JSON:\", err));});</script><section>    <h1>Network</h1>    <form method=\"get\" action=\"/network\">        <p>Network Type:</p>    <input type=\"radio\" name=\"mode\" value=\"AP\"> Self Host    <input type=\"radio\" name=\"mode\" value=\"STA\"> Join Network    <br>    <!-- AP -->    <label for=\"AP-SSID\">SSID</label>    <input type=\"text\" name=\"AP-SSID\">    <br>    <label for=\"AP-Password\">Password</label>    <input type=\"text\" name=\"AP-Password\">    <br>    <!-- STA -->    <label for=\"STA-SSID\">SSID</label>    <input type=\"text\" name=\"STA-SSID\">    <br>    <label for=\"STA-Password\">Password</label>    <input type=\"text\" name=\"STA-Password\">    <br>    <button type=\"submit\" style=\"column-span: 3;\">Update Network Configuration</button>            </form>    </section><section>    <h1>OSC</h1>    <form method=\"get\" action=\"/OSC\">    <!-- OSC -->    <label for=\"OSC-Remote\">Remote IP</label>    <input type=\"text\" name=\"OSC-Remote\">    <label for=\"OSC-Remote-Port\">Port:</label>    <input type=\"number\" name=\"OSC-Remote-Port\">    <br>    <label for=\"OSC-Local\">Local IP</label>    <input type=\"text\" name=\"OSC-Local\">    <label for=\"OSC-Local-Port\">Port:</label>    <input type=\"number\" name=\"OSC-Local-Port\">    <br>    <button type=\"submit\" style=\"column-span: 3;\">Update OSC Configuration</button>            </form>    </section><section><h1>GPIO</h1>    <form method=\"post\" action=\"/GPIO\"> <table><tr><td>Pin - 1</td><td><select name=\"pin1\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin1-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 2</td><td><select name=\"pin2\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin2-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 3</td><td><select name=\"pin3\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin3-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 4</td><td><select name=\"pin4\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin4-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 5</td><td><select name=\"pin5\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin5-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 6</td><td><select name=\"pin6\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin6-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 7</td><td><select name=\"pin7\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin7-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 8</td><td><select name=\"pin8\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin8-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 9</td><td><select name=\"pin9\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin9-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 10</td><td><select name=\"pin10\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin10-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 11</td><td><select name=\"pin11\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin11-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 12</td><td><select name=\"pin12\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin12-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 13</td><td><select name=\"pin13\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin13-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 14</td><td><select name=\"pin14\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin14-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 15</td><td><select name=\"pin15\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin15-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 16</td><td><select name=\"pin16\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin16-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 17</td><td><select name=\"pin17\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin17-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 18</td><td><select name=\"pin18\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin18-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 19</td><td><select name=\"pin19\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin19-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 20</td><td><select name=\"pin20\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin20-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 21</td><td><select name=\"pin21\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin21-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 22</td><td><select name=\"pin22\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin22-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 23</td><td><select name=\"pin23\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin23-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 24</td><td><select name=\"pin24\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin24-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 25</td><td><select name=\"pin25\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin25-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 26</td><td><select name=\"pin26\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin26-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 27</td><td><select name=\"pin27\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin27-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 28</td><td><select name=\"pin28\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin28-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr></table><button type=\"submit\">Save </button></form></body>   ";
     httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
-
 }
 
-static esp_err_t Conf_Reset(httpd_req_t *req) {
+static esp_err_t Conf_Reset(httpd_req_t *req)
+{
     nvs_save_int("Config", "Network", -1);
     esp_restart();
     return ESP_OK;
 }
 
-static esp_err_t Network_Handler(httpd_req_t *req) {
+static esp_err_t Network_Handler(httpd_req_t *req)
+{
     char query[256];
     char value[16];
 
     size_t qlen = httpd_req_get_url_query_len(req);
-    if (qlen == 0 || qlen >= sizeof(query)) {
+    if (qlen == 0 || qlen >= sizeof(query))
+    {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing query");
     }
 
@@ -470,17 +342,21 @@ static esp_err_t Network_Handler(httpd_req_t *req) {
     if (httpd_query_key_value(query, "mode", mode, sizeof(mode)) != ESP_OK)
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing mode");
 
-    bool isAP  = strcmp(mode, "AP")  == 0;
+    bool isAP = strcmp(mode, "AP") == 0;
     bool isSTA = strcmp(mode, "STA") == 0;
 
-    if (isAP) {
+    if (isAP)
+    {
         nvs_save_int("Config", "Network", AP);
-    } else if (isSTA) {
+    }
+    else if (isSTA)
+    {
         nvs_save_int("Config", "Network", STA);
-    } else {
+    }
+    else
+    {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid mode");
     }
-
 
     // --- Read AP SSID (string) ---
     if (httpd_query_key_value(query, "AP-SSID", value, sizeof(value)) != ESP_OK)
@@ -510,12 +386,11 @@ static esp_err_t Network_Handler(httpd_req_t *req) {
     char STA_Password[64];
     strcpy(STA_Password, value);
 
-    nvs_save_str("AP","SSID",AP_SSID);
-    nvs_save_str("AP","Passphrase",AP_Password);
+    nvs_save_str("AP", "SSID", AP_SSID);
+    nvs_save_str("AP", "Passphrase", AP_Password);
     // STA
-    nvs_save_str("STA","SSID",STA_SSID);
-    nvs_save_str("STA","Passphrase",STA_Password);
-    
+    nvs_save_str("STA", "SSID", STA_SSID);
+    nvs_save_str("STA", "Passphrase", STA_Password);
 
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "/");
@@ -524,18 +399,17 @@ static esp_err_t Network_Handler(httpd_req_t *req) {
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_restart();
 
-
-
-
     return ESP_OK;
 };
 
-static esp_err_t OSC_Handler(httpd_req_t *req){
+static esp_err_t OSC_Handler(httpd_req_t *req)
+{
     char query[256];
     char value[64];
 
     size_t qlen = httpd_req_get_url_query_len(req);
-    if (qlen == 0 || qlen >= sizeof(query)) {
+    if (qlen == 0 || qlen >= sizeof(query))
+    {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing query");
     }
 
@@ -577,30 +451,34 @@ static esp_err_t OSC_Handler(httpd_req_t *req){
     // Respond immediately so browser stops loading
     httpd_resp_set_type(req, "text/plain");
     httpd_resp_send(req, "OSC Saved", HTTPD_RESP_USE_STRLEN);
-    
+
     return ESP_OK;
 };
 
-static esp_err_t GPIO_Handler(httpd_req_t *req){
+static esp_err_t GPIO_Handler(httpd_req_t *req)
+{
     // --- Read POST body ---
     int total = req->content_len;
-    if (total <= 0 || total > 1024) {
+    if (total <= 0 || total > 1024)
+    {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid body");
     }
 
     char body[1024];
     int received = httpd_req_recv(req, body, sizeof(body) - 1);
 
-    if (received <= 0) {
+    if (received <= 0)
+    {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to read body");
     }
 
-    body[received] = '\0';  // Null‑terminate
+    body[received] = '\0'; // Null‑terminate
 
     // --- Parse all pins ---
     char value[32];
 
-    for (int i = 1; i <= 28; i++) {
+    for (int i = 1; i <= 28; i++)
+    {
 
         char field_mode[16];
         char field_io[16];
@@ -610,23 +488,27 @@ static esp_err_t GPIO_Handler(httpd_req_t *req){
 
         // HTML field names
         snprintf(field_mode, sizeof(field_mode), "pin%d", i);
-        snprintf(field_io,   sizeof(field_io),   "pin%d-io", i);
+        snprintf(field_io, sizeof(field_io), "pin%d-io", i);
 
         // NVS keys
         snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
-        snprintf(key_io,   sizeof(key_io),   "Pin-%d-IO",    i);
+        snprintf(key_io, sizeof(key_io), "Pin-%d-IO", i);
 
         // --- MODE ---
-        if (httpd_query_key_value(body, field_mode, value, sizeof(value)) == ESP_OK) {
+        if (httpd_query_key_value(body, field_mode, value, sizeof(value)) == ESP_OK)
+        {
             int mode = atoi(value);
-            if (mode < 0 || mode > 2) mode = 0;
+            if (mode < 0 || mode > 2)
+                mode = 0;
             nvs_save_int("Pins", key_mode, mode);
         }
 
         // --- IO ---
-        if (httpd_query_key_value(body, field_io, value, sizeof(value)) == ESP_OK) {
+        if (httpd_query_key_value(body, field_io, value, sizeof(value)) == ESP_OK)
+        {
             int io = atoi(value);
-            if (io < 0 || io > 1) io = 0;
+            if (io < 0 || io > 1)
+                io = 0;
             nvs_save_int("Pins", key_io, io);
         }
     }
@@ -648,18 +530,19 @@ static esp_err_t gpio_json_handler(httpd_req_t *req)
 
     offset += snprintf(json + offset, sizeof(json) - offset, "{ \"pins\": {");
 
-    for (int i = 1; i <= 28; i++) {
+    for (int i = 1; i <= 28; i++)
+    {
 
         // Build NVS keys
         char key_mode[32];
         char key_io[32];
 
         snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
-        snprintf(key_io,   sizeof(key_io),   "Pin-%d-IO",    i);
+        snprintf(key_io, sizeof(key_io), "Pin-%d-IO", i);
 
         // Load values
         int mode = nvs_load_int("Pins", key_mode, 0);
-        int io   = nvs_load_int("Pins", key_io,   0);
+        int io = nvs_load_int("Pins", key_io, 0);
 
         // Append JSON entry
         offset += snprintf(json + offset, sizeof(json) - offset,
@@ -695,19 +578,18 @@ static esp_err_t network_json_handler(httpd_req_t *req)
 
     // Build JSON
     offset += snprintf(json + offset, sizeof(json) - offset,
-        "{"
-        "\"mode\":\"%s\","
-        "\"AP_SSID\":\"%s\","
-        "\"AP_Password\":\"%s\","
-        "\"STA_SSID\":\"%s\","
-        "\"STA_Password\":\"%s\""
-        "}",
-        (mode == AP ? "AP" : "STA"),
-        ap_ssid,
-        ap_pass,
-        sta_ssid,
-        sta_pass
-    );
+                       "{"
+                       "\"mode\":\"%s\","
+                       "\"AP_SSID\":\"%s\","
+                       "\"AP_Password\":\"%s\","
+                       "\"STA_SSID\":\"%s\","
+                       "\"STA_Password\":\"%s\""
+                       "}",
+                       (mode == AP ? "AP" : "STA"),
+                       ap_ssid,
+                       ap_pass,
+                       sta_ssid,
+                       sta_pass);
 
     // Free allocated strings
     free(ap_ssid);
@@ -732,21 +614,20 @@ static esp_err_t osc_json_handler(httpd_req_t *req)
     char *local_ip = getCurrentIP();
 
     int remote_port = nvs_load_int("OSC", "Remote_Port", 9000);
-    int local_port  = nvs_load_int("OSC", "Local_Port", 8000);
+    int local_port = nvs_load_int("OSC", "Local_Port", 8000);
 
     // Build JSON
     offset += snprintf(json + offset, sizeof(json) - offset,
-        "{"
-        "\"remote_ip\":\"%s\","
-        "\"remote_port\":%d,"
-        "\"local_ip\":\"%s\","
-        "\"local_port\":%d"
-        "}",
-        remote_ip,
-        remote_port,
-        local_ip,
-        local_port
-    );
+                       "{"
+                       "\"remote_ip\":\"%s\","
+                       "\"remote_port\":%d,"
+                       "\"local_ip\":\"%s\","
+                       "\"local_port\":%d"
+                       "}",
+                       remote_ip,
+                       remote_port,
+                       local_ip,
+                       local_port);
 
     // Free allocated strings
     free(remote_ip);
@@ -758,34 +639,32 @@ static esp_err_t osc_json_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-static const httpd_uri_t base_uri= {
-    .uri       = "/",
-    .method    = HTTP_GET,
-    .handler   = base_handler,
-    .user_ctx  = NULL
-};
+static const httpd_uri_t base_uri = {
+    .uri = "/",
+    .method = HTTP_GET,
+    .handler = base_handler,
+    .user_ctx = NULL};
 
-static const httpd_uri_t reset_uri= {
-    .uri       = "/reset",
-    .method    = HTTP_GET,
-    .handler   = Conf_Reset,
-    .user_ctx  = NULL
-};
+static const httpd_uri_t reset_uri = {
+    .uri = "/reset",
+    .method = HTTP_GET,
+    .handler = Conf_Reset,
+    .user_ctx = NULL};
 
-static const httpd_uri_t network_uri= {
+static const httpd_uri_t network_uri = {
     .uri = "/network",
     .method = HTTP_GET,
     .handler = Network_Handler,
     .user_ctx = NULL,
 };
 
-static const httpd_uri_t OSC_uri= {
+static const httpd_uri_t OSC_uri = {
     .uri = "/OSC",
     .method = HTTP_GET,
     .handler = OSC_Handler,
     .user_ctx = NULL,
 };
-static const httpd_uri_t GPIO_uri= {
+static const httpd_uri_t GPIO_uri = {
     .uri = "/GPIO",
     .method = HTTP_POST,
     .handler = GPIO_Handler,
@@ -793,73 +672,68 @@ static const httpd_uri_t GPIO_uri= {
 };
 
 static const httpd_uri_t gpio_json_uri = {
-    .uri       = "/gpio.json",
-    .method    = HTTP_GET,
-    .handler   = gpio_json_handler,
-    .user_ctx  = NULL
-};
+    .uri = "/gpio.json",
+    .method = HTTP_GET,
+    .handler = gpio_json_handler,
+    .user_ctx = NULL};
 
 static const httpd_uri_t osc_json_uri = {
-    .uri       = "/osc.json",
-    .method    = HTTP_GET,
-    .handler   = osc_json_handler,
-    .user_ctx  = NULL
-};
+    .uri = "/osc.json",
+    .method = HTTP_GET,
+    .handler = osc_json_handler,
+    .user_ctx = NULL};
 
 static const httpd_uri_t network_json_uri = {
-    .uri       = "/network.json",
-    .method    = HTTP_GET,
-    .handler   = network_json_handler,
-    .user_ctx  = NULL
-};
+    .uri = "/network.json",
+    .method = HTTP_GET,
+    .handler = network_json_handler,
+    .user_ctx = NULL};
 
 // Defines the Full Http server
-httpd_handle_t start_webserver(){
+httpd_handle_t start_webserver()
+{
 
-  httpd_handle_t server = NULL;
+    httpd_handle_t server = NULL;
 
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
-  //config.lru_purge_enable = true;
+    // config.lru_purge_enable = true;
 
-  
+    if (httpd_start(&server, &config) == ESP_OK)
+    {
 
-  if (httpd_start(&server, &config) == ESP_OK) {
+        ESP_LOGI(TAG, "Server ok, registering the URI handlers...");
 
-    ESP_LOGI(TAG, "Server ok, registering the URI handlers...");
+        // Routes are Registered Here that are visible but must be linked through their uri handlers
 
-		// Routes are Registered Here that are visible but must be linked through their uri handlers
+        httpd_register_uri_handler(server, &base_uri);
 
-    httpd_register_uri_handler(server, &base_uri);
+        httpd_register_uri_handler(server, &network_uri);
 
-    httpd_register_uri_handler(server, &network_uri);
+        httpd_register_uri_handler(server, &OSC_uri);
 
-    httpd_register_uri_handler(server, &OSC_uri);
+        httpd_register_uri_handler(server, &GPIO_uri);
 
-    httpd_register_uri_handler(server, &GPIO_uri);
+        httpd_register_uri_handler(server, &gpio_json_uri);
 
-    httpd_register_uri_handler(server, &gpio_json_uri);
-    
-    httpd_register_uri_handler(server, &osc_json_uri);
-    
-    httpd_register_uri_handler(server, &network_json_uri);
+        httpd_register_uri_handler(server, &osc_json_uri);
 
-    httpd_register_uri_handler(server, &reset_uri);
+        httpd_register_uri_handler(server, &network_json_uri);
 
+        httpd_register_uri_handler(server, &reset_uri);
 
-    return server;
+        return server;
+    }
 
-  }
+    ESP_LOGI(TAG, "Error starting server");
 
-  ESP_LOGI(TAG, "Error starting server");
-
-  return NULL;
-
+    return NULL;
 }
 
 // UDP
 
-char *getCurrentIP() {
+char *getCurrentIP()
+{
     static char ip_str[16];
     esp_netif_ip_info_t ip_info;
 
@@ -867,13 +741,17 @@ char *getCurrentIP() {
 
     esp_netif_t *netif = NULL;
 
-    if (AP_MODE == STA) {
+    if (AP_MODE == STA)
+    {
         netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    } else if (AP_MODE == AP) {
+    }
+    else if (AP_MODE == AP)
+    {
         netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
     }
 
-    if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+    if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK)
+    {
         sprintf(ip_str, IPSTR, IP2STR(&ip_info.ip));
         return ip_str;
     }
@@ -883,25 +761,28 @@ char *getCurrentIP() {
 
 void sendPingMessage();
 // OSC message server
-void ProcessMessage(const OscTimeTag* const oscTimeTag,
-                    OscMessage* const oscMessage)
+void ProcessMessage(const OscTimeTag *const oscTimeTag,
+                    OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
-    ESP_LOGI("OSC_Process", "%s",addr);
+    ESP_LOGI("OSC_Process", "%s", addr);
     // Match prefix
 
-    if (OscAddressMatch(addr, "/ping")){
+    if (OscAddressMatch(addr, "/ping"))
+    {
         sendPingMessage();
     }
 
-    if (OscAddressMatch(addr, "/outputs/digital/6")) {
+    if (OscAddressMatch(addr, "/outputs/digital/6"))
+    {
         ESP_LOGI("OSC_Proccess", "addr");
         // Extract channel number
         int gpio = atoi(addr + strlen("/outputs/digital/"));
 
         // Extract integer argument
         int32_t level;
-        if (OscMessageGetArgumentAsInt32(oscMessage, &level) != OscErrorNone) {
+        if (OscMessageGetArgumentAsInt32(oscMessage, &level) != OscErrorNone)
+        {
             return;
         }
 
@@ -917,10 +798,6 @@ void ProcessMessage(const OscTimeTag* const oscTimeTag,
         return;
     }
 }
-
-
-
-
 
 /* UDP socket tests */
 
@@ -950,9 +827,10 @@ static void udp_server_task(void *pvParameters)
     struct sockaddr_in client_addr;
     memset(&client_addr, 0, sizeof(client_addr));
     client_addr.sin_family = AF_INET;
-    client_addr.sin_port   = htons(remote_port);
+    client_addr.sin_port = htons(remote_port);
 
-    if (inet_aton(remote_ip, &client_addr.sin_addr) == 0) {
+    if (inet_aton(remote_ip, &client_addr.sin_addr) == 0)
+    {
         ESP_LOGE(TAG, "Invalid Remote_IP in NVS: %s", remote_ip);
     }
 
@@ -961,37 +839,42 @@ static void udp_server_task(void *pvParameters)
     memcpy(&last_client_addr, &client_addr, sizeof(client_addr));
     last_client_len = sizeof(client_addr);
 
-    while (1) {
+    while (1)
+    {
 
         // Build local bind address
-        if (addr_family == AF_INET) {
+        if (addr_family == AF_INET)
+        {
             struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
             memset(dest_addr_ip4, 0, sizeof(struct sockaddr_in));
             dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
-            dest_addr_ip4->sin_family      = AF_INET;
-            dest_addr_ip4->sin_port        = htons(local_port);
+            dest_addr_ip4->sin_family = AF_INET;
+            dest_addr_ip4->sin_port = htons(local_port);
             ip_protocol = IPPROTO_IP;
-
-        } else {
+        }
+        else
+        {
             memset(&dest_addr, 0, sizeof(dest_addr));
             dest_addr.sin6_family = AF_INET6;
-            dest_addr.sin6_port   = htons(local_port);
+            dest_addr.sin6_port = htons(local_port);
             ip_protocol = IPPROTO_IPV6;
         }
 
         sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
-        if (sock < 0) {
+        if (sock < 0)
+        {
             ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
             break;
         }
 
         ESP_LOGI(TAG, "Socket created");
 
-        struct timeval timeout = { .tv_sec = 10, .tv_usec = 0 };
+        struct timeval timeout = {.tv_sec = 10, .tv_usec = 0};
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
         int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        if (err < 0) {
+        if (err < 0)
+        {
             ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
         }
 
@@ -1000,22 +883,27 @@ static void udp_server_task(void *pvParameters)
         struct sockaddr_storage source_addr;
         socklen_t socklen = sizeof(source_addr);
 
-        while (1) {
+        while (1)
+        {
             ESP_LOGI(TAG, "Waiting for data");
 
             int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0,
                                (struct sockaddr *)&source_addr, &socklen);
 
-            if (len < 0) {
+            if (len < 0)
+            {
                 ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
                 break;
             }
 
             // Convert sender IP only for logging
-            if (source_addr.ss_family == PF_INET) {
+            if (source_addr.ss_family == PF_INET)
+            {
                 inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr,
                             addr_str, sizeof(addr_str));
-            } else {
+            }
+            else
+            {
                 inet6_ntoa_r(((struct sockaddr_in6 *)&source_addr)->sin6_addr,
                              addr_str, sizeof(addr_str));
             }
@@ -1038,57 +926,69 @@ static void udp_server_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-
 void udp_send_osc(OscPacket msg)
 {
-    if (sock < 0) {
+    if (sock < 0)
+    {
         ESP_LOGE(TAG, "Socket not initialized");
         return;
     }
 
-    if (last_client_len == 0) {
-        // ESP_LOGE(TAG, "No client address available");
-        return;
-    }
+    char *ip_string = nvs_load_str("OSC", "Remote_IP","192.168.4.2");
+
+    const int port_num = nvs_load_int("OSC", "Remote_Port", 8000);
+
+    ESP_LOGI("UDP_REMOTE_IP","Value: %s",ip_string);
+    ESP_LOGI("UDP_REMOTE_PORT","%d",port_num);
+
+    const struct sockaddr_in dest_addr = {
+        .sin_family = AF_INET,
+        .sin_port = htons(port_num),
+        .sin_addr.s_addr = inet_addr(ip_string),
+    };
 
     int err = sendto(
         sock,
         msg.contents,
         msg.size,
         0,
-        (struct sockaddr *)&last_client_addr,
-        last_client_len
-    );
+        (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+        
 
-    if (err < 0) {
+    if (err < 0)
+    {
         ESP_LOGE(TAG, "Send failed: errno %d", errno);
-    } else {
+    }
+    else
+    {
         // ESP_LOGI(TAG, "Sent: %s", msg);
     }
+    free(ip_string);
 }
 
-
-
-//OSC
-void sendOscContents(const void* const oscContents) {
+// OSC
+void sendOscContents(const void *const oscContents)
+{
     OscPacket OscPacket;
-    if (OscPacketInitialiseFromContents(&OscPacket, oscContents) != OscErrorNone){
+    if (OscPacketInitialiseFromContents(&OscPacket, oscContents) != OscErrorNone)
+    {
         return;
     }
 
-    // encode a slip packet 
+    // encode a slip packet
     // char slipPacket[MAX_OSC_PACKET_SIZE];
     // size_t slipPacketSize;
     // if (OscSlipEncodePacket(&OscPacket, &slipPacketSize, slipPacket, sizeof(slipPacket))){
     //     return;
     // }
 
-    // send Packet 
+    // send Packet
 
     udp_send_osc(OscPacket);
 }
 
-void sendPingMessage() {
+void sendPingMessage()
+{
     OscMessage oscMessage;
     OscMessageInitialise(&oscMessage, "/ping");
 
@@ -1113,12 +1013,10 @@ void sendPingMessage() {
     sendOscContents(&oscMessage);
 }
 
-void oscDigitalSend(int pinval, int pinnum){
+void oscDigitalSend(int pinval, int pinnum) {
 };
 
-
 void oscAnalogueSend(float pinval, int pinnum);
-
 
 // Pin reads
 adc_oneshot_unit_handle_t adc_handle;
@@ -1130,7 +1028,8 @@ void adc_init(void)
     };
     ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_cfg, &adc_handle));
 
-    for (int i = 2; i < 6 + 1; i++) {
+    for (int i = 2; i < 6 + 1; i++)
+    {
 
         int channel = i - 1;
 
@@ -1150,8 +1049,7 @@ int readDigitalPin(int pin)
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
-    };
+        .intr_type = GPIO_INTR_DISABLE};
 
     gpio_config(&io_conf);
 
@@ -1168,11 +1066,10 @@ float readAnaloguePin(int pin)
     return (float)raw / 4095.0f;
 }
 
-
-
 // Reads the Current Pin Values of active pins and sends it via osc
 
-typedef enum GPIO_STATE {
+typedef enum GPIO_STATE
+{
     OFF,
     ANALOGUE,
     DIGITAL,
@@ -1186,55 +1083,65 @@ void send_digital_inputs(void)
     int changed = 0;
     int values[PINCOUNT];
 
-    for (int i = 1; i < PINCOUNT + 1; i++) {
+    for (int i = 1; i < PINCOUNT + 1; i++)
+    {
 
         char key_mode[32];
         snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
 
         int mode = nvs_load_int("Pins", key_mode, 0);
 
-        if (mode == DIGITAL) {
+        if (mode == DIGITAL)
+        {
             int val = readDigitalPin(i);
-            values[i-1] = val;
+            values[i - 1] = val;
 
-            if (val != last_digital[i-1]) {
+            if (val != last_digital[i - 1])
+            {
                 changed = 1;
-                last_digital[i-1] = val;
+                last_digital[i - 1] = val;
             }
-        } else {
-            values[i-1] = 0;
+        }
+        else
+        {
+            values[i - 1] = 0;
         }
     }
 
-    if (!changed) return;
+    if (!changed)
+        return;
 
     OscMessage msg;
     OscMessageInitialise(&msg, "/inputs/digital");
 
-    for (int i = 0; i < PINCOUNT; i++) {
+    for (int i = 0; i < PINCOUNT; i++)
+    {
         OscMessageAddInt32(&msg, values[i]);
     }
 
     sendOscContents(&msg);
 }
 
-
 void send_analogue_inputs(void)
 {
     OscMessage msg;
     OscMessageInitialise(&msg, "/inputs/analogue");
 
-    for (int i = 1; i < PINCOUNT + 1; i++) {
+    for (int i = 1; i < PINCOUNT + 1; i++)
+    {
 
         char key_mode[32];
         snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
 
         int mode = nvs_load_int("Pins", key_mode, 0);
 
-        if (mode == ANALOGUE) {
+        if (mode == ANALOGUE)
+        {
             float val = readAnaloguePin(i);
             OscMessageAddFloat32(&msg, val);
-        } else {
+        }
+        else
+        {
             OscMessageAddFloat32(&msg, 0.0f);
         }
     }
@@ -1242,34 +1149,39 @@ void send_analogue_inputs(void)
     sendOscContents(&msg);
 }
 
-
-
 void gpio_task(void *pv)
 {
-    while (1) {
+    while (1)
+    {
 
-        send_digital_inputs();   // only sends on change
-        send_analogue_inputs();  // sends every cycle
+        send_digital_inputs();  // only sends on change
+        send_analogue_inputs(); // sends every cycle
 
         vTaskDelay(pdMS_TO_TICKS(10)); // 100 Hz
     }
 }
 
-
-
-
 void app_main(void)
 {
     // NVS init (unchanged)
-    esp_err_t ret = nvs_flash_init();  
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
 
-    int AP_MODE = nvs_load_int("Config","Network",-1);
-    if (AP_MODE < AP || AP_MODE >= AP_MODE_END) {
+
+    
+    nvs_save_int("test", "count", 123);
+    int32_t v = nvs_load_int("test", "count", -1);
+    ESP_LOGI("NVS", "Loaded count = %" PRId32, v);
+
+
+    int AP_MODE = nvs_load_int("Config", "Network", -1);
+    if (AP_MODE < AP || AP_MODE >= AP_MODE_END)
+    {
         init_default_Config();
         esp_restart();
     }
@@ -1277,19 +1189,23 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    esp_netif_t *ap  = NULL;
+    esp_netif_t *ap = NULL;
     esp_netif_t *sta = NULL;
 
-    if (AP_MODE == AP) {
+    if (AP_MODE == AP)
+    {
         ap = esp_netif_create_default_wifi_ap();
-    } else { // STA
+    }
+    else
+    { // STA
         sta = esp_netif_create_default_wifi_sta();
     }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    if (AP_MODE == AP) {
+    if (AP_MODE == AP)
+    {
         // --- AP ONLY PATH ---
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
         ESP_LOGI(TAG_AP, "ESP_WIFI_MODE_AP");
@@ -1302,8 +1218,9 @@ void app_main(void)
         // Start HTTP server directly
         httpd_handle_t server = start_webserver();
         (void)server;
-
-    } else {
+    }
+    else
+    {
         // --- STA PATH ---
         // Create event group only for STA
         s_wifi_event_group = xEventGroupCreate();
@@ -1311,17 +1228,17 @@ void app_main(void)
 
         // Register handlers (STA-related)
         ESP_ERROR_CHECK(esp_event_handler_instance_register(
-                            WIFI_EVENT,
-                            ESP_EVENT_ANY_ID,
-                            &wifi_event_handler,
-                            NULL,
-                            NULL));
+            WIFI_EVENT,
+            ESP_EVENT_ANY_ID,
+            &wifi_event_handler,
+            NULL,
+            NULL));
         ESP_ERROR_CHECK(esp_event_handler_instance_register(
-                            IP_EVENT,
-                            IP_EVENT_STA_GOT_IP,
-                            &wifi_event_handler,
-                            NULL,
-                            NULL));
+            IP_EVENT,
+            IP_EVENT_STA_GOT_IP,
+            &wifi_event_handler,
+            NULL,
+            NULL));
 
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_LOGI(TAG_STA, "ESP_WIFI_MODE_STA");
@@ -1329,23 +1246,28 @@ void app_main(void)
         ESP_ERROR_CHECK(esp_wifi_start());
 
         EventBits_t bits = xEventGroupWaitBits(
-                                s_wifi_event_group,
-                                WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                pdFALSE,
-                                pdFALSE,
-                                portMAX_DELAY);
+            s_wifi_event_group,
+            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+            pdFALSE,
+            pdFALSE,
+            portMAX_DELAY);
 
-        if (bits & WIFI_CONNECTED_BIT) {
+        if (bits & WIFI_CONNECTED_BIT)
+        {
             ESP_LOGI(TAG_STA, "connected to ap SSID:%s password:%s",
                      EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
             // If you ever run AP+STA, only then call:
             // softap_set_dns_addr(ap, sta);
-        } else if (bits & WIFI_FAIL_BIT) {
+        }
+        else if (bits & WIFI_FAIL_BIT)
+        {
             ESP_LOGE(TAG_STA, "Failed to connect to SSID:%s, password:%s",
                      EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
-            nvs_save_int("Config","Network",AP);
+            nvs_save_int("Config", "Network", AP);
             esp_restart();
-        } else {
+        }
+        else
+        {
             ESP_LOGE(TAG_STA, "UNEXPECTED EVENT");
         }
 
@@ -1354,23 +1276,22 @@ void app_main(void)
         (void)server;
     }
 
-    
-    #ifdef CONFIG_EXAMPLE_IPV4
-        xTaskCreate(udp_server_task, "udp_server", 12288, (void*)AF_INET, 5, NULL);
-    #endif
-    #ifdef CONFIG_EXAMPLE_IPV6
-        xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET6, 5, NULL);
-    #endif
+#ifdef CONFIG_EXAMPLE_IPV4
+    xTaskCreate(udp_server_task, "udp_server", 12288, (void *)AF_INET, 5, NULL);
+#endif
+#ifdef CONFIG_EXAMPLE_IPV6
+    xTaskCreate(udp_server_task, "udp_server", 4096, (void *)AF_INET6, 5, NULL);
+#endif
+
 
     adc_init();
 
     xTaskCreate(
-    gpio_task,          // Task function
-    "GPIO Task",        // Name (for debugging)
-    8192,               // Stack size in bytes
-    NULL,               // Task parameters
-    5,                  // Priority (1–10 typical)
-    NULL                // Task handle (optional)
+        gpio_task,   // Task function
+        "GPIO Task", // Name (for debugging)
+        8192,        // Stack size in bytes
+        NULL,        // Task parameters
+        5,           // Priority (1–10 typical)
+        NULL         // Task handle (optional)
     );
-    
 }
