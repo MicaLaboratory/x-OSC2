@@ -47,14 +47,8 @@
 
 #include "NVS_Helper_Funcs.h"
 
-#define PLACEHOLDER 0
 #define PINCOUNT 28
 #define MAX_ATTEMPS 10
-
-/* STA Configuration */
-#define EXAMPLE_ESP_WIFI_STA_SSID CONFIG_ESP_WIFI_REMOTE_AP_SSID
-#define EXAMPLE_ESP_WIFI_STA_PASSWD CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD
-#define EXAMPLE_ESP_MAXIMUM_RETRY CONFIG_ESP_MAXIMUM_STA_RETRY
 
 #if CONFIG_ESP_WIFI_AUTH_OPEN
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_OPEN
@@ -179,7 +173,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
         ESP_LOGW(TAG_STA, "STA disconnected, reason: %d", event->reason);
 
-        if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY)
+        if (s_retry_num < CONFIG_ESP_MAXIMUM_STA_RETRY)
         {
             esp_wifi_connect();
             s_retry_num++;
@@ -237,13 +231,13 @@ void wifi_init_sta(void)
 {
     // esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
 
-    char *SSID = nvs_load_str("STA", "SSID", EXAMPLE_ESP_WIFI_STA_SSID);
-    char *PASS = nvs_load_str("STA", "Passphrase", EXAMPLE_ESP_WIFI_STA_PASSWD);
+    char *SSID = nvs_load_str("STA", "SSID", CONFIG_ESP_WIFI_REMOTE_AP_SSID);
+    char *PASS = nvs_load_str("STA", "Passphrase", CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
 
     wifi_config_t wifi_sta_config = {
         .sta = {
             .scan_method = WIFI_ALL_CHANNEL_SCAN,
-            .failure_retry_cnt = EXAMPLE_ESP_MAXIMUM_RETRY,
+            .failure_retry_cnt = CONFIG_ESP_MAXIMUM_STA_RETRY,
             .threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
             .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
         },
@@ -1255,14 +1249,14 @@ void app_main(void)
         if (bits & WIFI_CONNECTED_BIT)
         {
             ESP_LOGI(TAG_STA, "connected to ap SSID:%s password:%s",
-                     EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
+                     CONFIG_ESP_WIFI_REMOTE_AP_SSID, CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
             // If you ever run AP+STA, only then call:
             // softap_set_dns_addr(ap, sta);
         }
         else if (bits & WIFI_FAIL_BIT)
         {
             ESP_LOGE(TAG_STA, "Failed to connect to SSID:%s, password:%s",
-                     EXAMPLE_ESP_WIFI_STA_SSID, EXAMPLE_ESP_WIFI_STA_PASSWD);
+                     CONFIG_ESP_WIFI_REMOTE_AP_SSID, CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
             nvs_save_int("Config", "Network", AP);
             esp_restart();
         }
