@@ -920,8 +920,8 @@ void udp_send_osc(OscPacket msg)
 
     const int port_num = nvs_load_int("OSC", "Remote_Port", 8000);
 
-    ESP_LOGI("UDP_REMOTE_IP", "Value: %s", ip_string);
-    ESP_LOGI("UDP_REMOTE_PORT", "%d", port_num);
+    // ESP_LOGI("UDP_REMOTE_IP", "Value: %s", ip_string);
+    // ESP_LOGI("UDP_REMOTE_PORT", "%d", port_num);
 
     const struct sockaddr_in dest_addr = {
         .sin_family = AF_INET,
@@ -938,7 +938,7 @@ void udp_send_osc(OscPacket msg)
 
     if (err < 0)
     {
-        ESP_LOGE(TAG, "Send failed: errno %d", errno);
+        ESP_LOGE("UDP_SEND", "Send failed: errno %d", errno);
     }
     else
     {
@@ -1153,10 +1153,6 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    flashLedRed();
-    flashLedRed();
-    flashLedRed();
-    flashLedRed();
     flashLedRed();
     flashLedRed();
 
