@@ -255,8 +255,8 @@ void wifi_init_sta(void)
         pass_len = 64;
     memcpy(wifi_sta_config.sta.password, PASS, pass_len);
 
-    ESP_LOGE("SSID","%s",SSID);
-    ESP_LOGE("PASS","%s",PASS);
+    ESP_LOGE("SSID", "%s", SSID);
+    ESP_LOGE("PASS", "%s", PASS);
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config));
 
@@ -928,12 +928,12 @@ void udp_send_osc(OscPacket msg)
         return;
     }
 
-    char *ip_string = nvs_load_str("OSC", "Remote_IP","192.168.4.2");
+    char *ip_string = nvs_load_str("OSC", "Remote_IP", "192.168.4.2");
 
     const int port_num = nvs_load_int("OSC", "Remote_Port", 8000);
 
-    ESP_LOGI("UDP_REMOTE_IP","Value: %s",ip_string);
-    ESP_LOGI("UDP_REMOTE_PORT","%d",port_num);
+    ESP_LOGI("UDP_REMOTE_IP", "Value: %s", ip_string);
+    ESP_LOGI("UDP_REMOTE_PORT", "%d", port_num);
 
     const struct sockaddr_in dest_addr = {
         .sin_family = AF_INET,
@@ -947,7 +947,6 @@ void udp_send_osc(OscPacket msg)
         msg.size,
         0,
         (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        
 
     if (err < 0)
     {
@@ -1166,12 +1165,9 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-
-    
     ESP_ERROR_CHECK(nvs_save_int("test", "count", 123));
     int32_t v = nvs_load_int("test", "count", -1);
     ESP_LOGI("NVS", "Loaded count = %" PRId32, v);
-
 
     int AP_MODE = nvs_load_int("Config", "Network", -1);
     if (AP_MODE < AP || AP_MODE >= AP_MODE_END)
@@ -1276,7 +1272,6 @@ void app_main(void)
 #ifdef CONFIG_EXAMPLE_IPV6
     xTaskCreate(udp_server_task, "udp_server", 4096, (void *)AF_INET6, 5, NULL);
 #endif
-
 
     adc_init();
 
