@@ -41,6 +41,7 @@
 #include "OscPacket.h"
 #include "OscSlip.h"
 #include "Osc99.h"
+#include "OSC_Routes.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
@@ -759,39 +760,26 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag,
                     OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
-    ESP_LOGI("OSC_Process", "%s", addr);
-    // Match prefix
 
-    if (OscAddressMatch(addr, "/ping"))
-    {
-        sendPingMessage();
-    }
+    for (size_t i = 0; i < sizeof(ROUTES)/sizeof(ROUTES[0]); i++) {
+        const OscRoute *r = &ROUTES[i];
 
-    if (OscAddressMatch(addr, "/outputs/digital/6"))
-    {
-        ESP_LOGI("OSC_Proccess", "addr");
-        // Extract channel number
-        int gpio = atoi(addr + strlen("/outputs/digital/"));
+        if (OscAddressMatch(addr, r->prefix)) {
 
-        // Extract integer argument
-        int32_t level;
-        if (OscMessageGetArgumentAsInt32(oscMessage, &level) != OscErrorNone)
-        {
+            int channel = -1;
+            if (r->has_channel) {
+                channel = parseChannel(addr, r->prefix);
+            }
+
+            r->handler(oscMessage, channel);
             return;
         }
-
-        // Configure pin
-        gpio_config_t cfg = {
-            .pin_bit_mask = 1ULL << gpio,
-            .mode = GPIO_MODE_OUTPUT,
-        };
-        gpio_config(&cfg);
-
-        // Set pin
-        gpio_set_level(gpio, level ? 1 : 0);
-        return;
     }
+
+    // No match → flash red LED
+    flashLedRed();
 }
+
 
 /* UDP socket tests */
 
