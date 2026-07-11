@@ -9,15 +9,34 @@
 
 static led_strip_handle_t led_strip;
 
+static void configure_led(void)
+{
+    /* LED strip initialization with the GPIO and pixels number*/
+    led_strip_config_t strip_config = {
+        .strip_gpio_num = 27,
+        .max_leds = 1, // at least one LED on board
+    };
+    led_strip_rmt_config_t rmt_config = {
+        .resolution_hz = 10 * 1000 * 1000, // 10MHz
+        .flags.with_dma = false,
+    };
+    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip));
+    /* Set all LED off to clear all pixels */
+    led_strip_clear(led_strip);
+}
+
 void flashLedRed(void)
 {
-    ESP_LOGW("OSC", "Unknown OSC address → flashing red LED");
-    led_strip_clear(led_strip);
-    led_strip_set_pixel(led_strip, 0, 255, 0, 0);
+    if (led_strip == NULL)
+    {
+        ESP_LOGE("OSC", "flashLedRed called but LED strip is not initialized");
+        configure_led();
+        return;
+    }
+    led_strip_set_pixel(led_strip, 0, 0, 255, 0);
     led_strip_refresh(led_strip);
     vTaskDelay(100);
     led_strip_clear(led_strip);
-
 }
 
 /**************  GENERAL / PING  **************/

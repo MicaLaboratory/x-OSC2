@@ -1153,9 +1153,12 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    ESP_ERROR_CHECK(nvs_save_int("test", "count", 123));
-    int32_t v = nvs_load_int("test", "count", -1);
-    ESP_LOGI("NVS", "Loaded count = %" PRId32, v);
+    flashLedRed();
+    flashLedRed();
+    flashLedRed();
+    flashLedRed();
+    flashLedRed();
+    flashLedRed();
 
     int AP_MODE = nvs_load_int("Config", "Network", -1);
     if (AP_MODE < AP || AP_MODE >= AP_MODE_END)
