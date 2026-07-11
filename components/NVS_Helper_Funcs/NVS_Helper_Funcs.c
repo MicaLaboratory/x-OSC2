@@ -1,74 +1,69 @@
 #include <stdio.h>
 #include <inttypes.h> // for PRId32
 #include "NVS_Helper_Funcs.h"
-#include "esp_err.h"
 #include "nvs.h"
 #include "esp_log.h"
 
 // Saving INT
-void nvs_save_int(const char *namespace_name, const char *key, int32_t value)
+esp_err_t nvs_save_int(const char *namespace_name, const char *key, int32_t value)
 {
     nvs_handle_t handle;
     esp_err_t err = nvs_open(namespace_name, NVS_READWRITE, &handle);
-    
 
     if (err != ESP_OK)
     {
-        ESP_LOGE("NVS", "Error opening NVS: %s", esp_err_to_name(err));
-        return;
+        return err;
     }
 
     err = nvs_set_i32(handle, key, value);
     if (err != ESP_OK)
     {
-        ESP_LOGE("NVS", "Failed to save %s: %s", key, esp_err_to_name(err));
         nvs_close(handle);
-        return;
+        return err;
     }
 
     err = nvs_commit(handle);
     if (err != ESP_OK)
     {
-        ESP_LOGE("NVS", "Commit failed for %s: %s", key, esp_err_to_name(err));
         nvs_close(handle);
-        return;
+        return err;
     }
 
     ESP_LOGI("NVS", "Saved %s = %" PRId32, key, value);
 
     nvs_close(handle);
+    return ESP_OK;
 }
 
 // Saving STRING
-void nvs_save_str(const char *namespace_name, const char *key, const char *value)
+esp_err_t nvs_save_str(const char *namespace_name, const char *key, const char *value)
 {
     nvs_handle_t handle;
     esp_err_t err = nvs_open(namespace_name, NVS_READWRITE, &handle);
 
     if (err != ESP_OK)
     {
-        ESP_LOGE("NVS", "Error opening NVS: %s", esp_err_to_name(err));
-        return;
+        return err;
     }
 
     err = nvs_set_str(handle, key, value);
     if (err != ESP_OK)
     {
-        ESP_LOGE("NVS", "Failed to save %s: %s", key, esp_err_to_name(err));
         nvs_close(handle);
-        return;
+        return err;
     }
 
     err = nvs_commit(handle);
     if (err != ESP_OK)
     {
-        ESP_LOGE("NVS", "Commit failed for %s: %s", key, esp_err_to_name(err));
         nvs_close(handle);
-        return;
+        return err;
     }
 
     ESP_LOGI("NVS", "Saved %s = \"%s\"", key, value);
+
     nvs_close(handle);
+    return ESP_OK;
 }
 
 // Loading INT
