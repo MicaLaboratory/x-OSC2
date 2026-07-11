@@ -43,7 +43,7 @@ void flashLedRed(void)
 void handlePing(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Ping received");
-    // TODO: send ping response
+    sendPingMessage();
 }
 
 /**************  OSC NETWORK CONFIG  **************/

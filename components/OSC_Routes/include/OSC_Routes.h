@@ -19,6 +19,7 @@ static inline int parseChannel(const char *addr, const char *prefix)
     return atoi(addr + strlen(prefix));
 }
 
+extern void sendPingMessage();
 
 void handlePing(OscMessage *msg, int channel);
 void handleRemoteIp(OscMessage *msg, int channel);
