@@ -1,14 +1,23 @@
 #include <stdio.h>
 #include "OSC_Routes.h"
 
-
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
+#include "led_strip.h"
+
+static led_strip_handle_t led_strip;
 
 void flashLedRed(void)
 {
     ESP_LOGW("OSC", "Unknown OSC address → flashing red LED");
-    // TODO: implement LED flashing
+    led_strip_clear(led_strip);
+    led_strip_set_pixel(led_strip, 0, 255, 0, 0);
+    led_strip_refresh(led_strip);
+    vTaskDelay(100);
+    led_strip_clear(led_strip);
+
 }
 
 /**************  GENERAL / PING  **************/
