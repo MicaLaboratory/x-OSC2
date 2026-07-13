@@ -990,6 +990,7 @@ void udp_send_osc(OscPacket msg)
     if (err < 0)
     {
         ESP_LOGE("UDP_SEND", "Send failed: errno %d", errno);
+        ESP_LOGI("UDP_SEND", "free_heap=%u", esp_get_free_heap_size());
     }
     else
     {
@@ -1006,15 +1007,6 @@ void sendOscContents(const void *const oscContents)
     {
         return;
     }
-
-    // encode a slip packet
-    // char slipPacket[MAX_OSC_PACKET_SIZE];
-    // size_t slipPacketSize;
-    // if (OscSlipEncodePacket(&OscPacket, &slipPacketSize, slipPacket, sizeof(slipPacket))){
-    //     return;
-    // }
-
-    // send Packet
 
     udp_send_osc(OscPacket);
 }
