@@ -35,7 +35,7 @@ void flashLedRed(void)
     }
     led_strip_set_pixel(led_strip, 0, 0, 255, 0);
     led_strip_refresh(led_strip);
-    vTaskDelay(100);
+    vTaskDelay(5);
     led_strip_clear(led_strip);
 }
 
