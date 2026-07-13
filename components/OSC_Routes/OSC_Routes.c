@@ -193,6 +193,24 @@ void handleOutputModeSerial(OscMessage *msg, int channel)
 void handleDigitalOutput(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Digital output ch=%d", channel);
+    int gpio = channel;
+    // Extract integer argument
+    int32_t level;
+    OscError err = OscMessageGetArgumentAsInt32(msg, &level);
+    if (err != 0)
+    {
+        return;
+    }
+
+    // Configure pin
+    gpio_config_t cfg = {
+        .pin_bit_mask = 1ULL << gpio,
+        .mode = GPIO_MODE_OUTPUT,
+    };
+    gpio_config(&cfg);
+
+    // Set pin
+    gpio_set_level(gpio, level ? 1 : 0);
 }
 
 void handleDigitalPattern(OscMessage *msg, int channel)
