@@ -756,27 +756,78 @@ char *getCurrentIP()
 
 void sendPingMessage();
 // OSC message server
+
+#include <ctype.h>
+#include <string.h>
+#include <stdlib.h>
+#include "esp_log.h"
+
+// Helper: parse channel and validate numeric suffix
+static int parseChannelValidated(const char *addr, const char *prefix, int min_ch, int max_ch)
+{
+    const char *p = addr + strlen(prefix);
+    if (!p || *p == '\0') {
+        return -1; // no suffix
+    }
+
+    // ensure suffix is numeric (allow multi-digit)
+    for (const char *q = p; *q; ++q) {
+        if (!isdigit((unsigned char)*q)) {
+            return -1;
+        }
+    }
+
+    int ch = atoi(p);
+    if (ch < min_ch || ch > max_ch) {
+        return -1;
+    }
+    return ch;
+}
+
 void ProcessMessage(const OscTimeTag *const oscTimeTag,
                     OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
+    if (addr == NULL) {
+        ESP_LOGW("OSC_Process", "NULL address in message");
+        flashLedRed();
+        return;
+    }
 
-    for (size_t i = 0; i < sizeof(ROUTES)/sizeof(ROUTES[0]); i++) {
+    const size_t route_count = sizeof(ROUTES) / sizeof(ROUTES[0]);
+
+    for (size_t i = 0; i < route_count; ++i) {
         const OscRoute *r = &ROUTES[i];
 
-        if (OscAddressMatch(addr, r->prefix)) {
-
-            int channel = -1;
-            if (r->has_channel) {
-                channel = parseChannel(addr, r->prefix);
+        if (r->has_channel) {
+            // prefix match: route prefix must match start of addr
+            size_t plen = strlen(r->prefix);
+            if (strncmp(addr, r->prefix, plen) != 0) {
+                continue;
             }
 
+            // parse and validate channel (example valid range 1..16; adjust if needed)
+            int channel = parseChannelValidated(addr, r->prefix, 1, 16);
+            if (channel < 0) {
+                ESP_LOGW("OSC_Process", "Matched prefix '%s' but invalid channel in '%s'", r->prefix, addr);
+                flashLedRed();
+                return;
+            }
+
+            // call handler with validated channel
             r->handler(oscMessage, channel);
             return;
+        } else {
+            // exact match for non-channel routes
+            if (OscAddressMatch(addr, r->prefix)) {
+                r->handler(oscMessage, -1);
+                return;
+            }
         }
     }
 
     // No match → flash red LED
+    ESP_LOGW("OSC_Process", "No route for address '%s'", addr);
     flashLedRed();
 }
 
