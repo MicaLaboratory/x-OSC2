@@ -53,14 +53,14 @@ void handleRemoteIp(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Set remote IP");
     char new_ip[64];
-    OscError err = OscMessageGetArgumentAsString(msg,new_ip,sizeof(new_ip));
-    if (err != 0){
+    OscError err = OscMessageGetArgumentAsString(msg, new_ip, sizeof(new_ip));
+    if (err != 0)
+    {
         ESP_LOGE("OSC", "Failed to get osc contents");
         return;
     }
 
     ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", new_ip));
-
 
     ESP_LOGI("OSC", "Set remote IP Successfull");
 }
@@ -68,6 +68,17 @@ void handleRemoteIp(OscMessage *msg, int channel)
 void handleRemotePort(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Set remote port");
+    int32_t new_port;
+    OscError err = OscMessageGetArgumentAsInt32(msg, &new_port);
+    if (err != 0)
+    {
+        ESP_LOGE("OSC", "Failed to get osc contents");
+        return;
+    }
+
+    ESP_ERROR_CHECK(nvs_save_int("OSC", "Remote_Port", new_port));
+
+    ESP_LOGI("OSC", "Set remote port Successfull");
 }
 
 void handleLocalPort(OscMessage *msg, int channel)
