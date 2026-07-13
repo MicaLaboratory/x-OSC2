@@ -766,19 +766,23 @@ void sendPingMessage();
 static int parseChannelValidated(const char *addr, const char *prefix, int min_ch, int max_ch)
 {
     const char *p = addr + strlen(prefix);
-    if (!p || *p == '\0') {
+    if (!p || *p == '\0')
+    {
         return -1; // no suffix
     }
 
     // ensure suffix is numeric (allow multi-digit)
-    for (const char *q = p; *q; ++q) {
-        if (!isdigit((unsigned char)*q)) {
+    for (const char *q = p; *q; ++q)
+    {
+        if (!isdigit((unsigned char)*q))
+        {
             return -1;
         }
     }
 
     int ch = atoi(p);
-    if (ch < min_ch || ch > max_ch) {
+    if (ch < min_ch || ch > max_ch)
+    {
         return -1;
     }
     return ch;
@@ -788,7 +792,8 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag,
                     OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
-    if (addr == NULL) {
+    if (addr == NULL)
+    {
         ESP_LOGW("OSC_Process", "NULL address in message");
         flashLedRed();
         return;
@@ -796,19 +801,23 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag,
 
     const size_t route_count = sizeof(ROUTES) / sizeof(ROUTES[0]);
 
-    for (size_t i = 0; i < route_count; ++i) {
+    for (size_t i = 0; i < route_count; ++i)
+    {
         const OscRoute *r = &ROUTES[i];
 
-        if (r->has_channel) {
+        if (r->has_channel)
+        {
             // prefix match: route prefix must match start of addr
             size_t plen = strlen(r->prefix);
-            if (strncmp(addr, r->prefix, plen) != 0) {
+            if (strncmp(addr, r->prefix, plen) != 0)
+            {
                 continue;
             }
 
             // parse and validate channel (example valid range 1..16; adjust if needed)
             int channel = parseChannelValidated(addr, r->prefix, 1, 28);
-            if (channel < 0) {
+            if (channel < 0)
+            {
                 ESP_LOGW("OSC_Process", "Matched prefix '%s' but invalid channel in '%s'", r->prefix, addr);
                 flashLedRed();
                 return;
@@ -817,9 +826,12 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag,
             // call handler with validated channel
             r->handler(oscMessage, channel);
             return;
-        } else {
+        }
+        else
+        {
             // exact match for non-channel routes
-            if (OscAddressMatch(addr, r->prefix)) {
+            if (OscAddressMatch(addr, r->prefix))
+            {
                 r->handler(oscMessage, -1);
                 return;
             }
@@ -830,7 +842,6 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag,
     ESP_LOGW("OSC_Process", "No route for address '%s'", addr);
     flashLedRed();
 }
-
 
 /* UDP socket tests */
 
@@ -968,6 +979,7 @@ void udp_send_osc(OscPacket msg)
     }
 
     char *ip_string = nvs_load_str("OSC", "Remote_IP", "192.168.4.2");
+    // char *ip_string = "192.168.0.45";
 
     const int port_num = nvs_load_int("OSC", "Remote_Port", 8000);
 
@@ -1181,7 +1193,7 @@ void gpio_task(void *pv)
         send_digital_inputs();  // only sends on change
         send_analogue_inputs(); // sends every cycle
 
-        vTaskDelay(pdMS_TO_TICKS(10)); // 100 Hz
+        vTaskDelay(pdMS_TO_TICKS(100)); // 100 Hz
     }
 }
 
