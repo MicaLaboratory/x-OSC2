@@ -6,6 +6,7 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "led_strip.h"
+#include "NVS_Helper_Funcs.h"
 
 static led_strip_handle_t led_strip;
 
@@ -44,12 +45,24 @@ void handlePing(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Ping received");
     sendPingMessage();
+    ESP_LOGI("OSC", "Ping response Sent");
 }
 
 /**************  OSC NETWORK CONFIG  **************/
 void handleRemoteIp(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Set remote IP");
+    char new_ip[64];
+    OscError err = OscMessageGetArgumentAsString(msg,new_ip,sizeof(new_ip));
+    if (err != 0){
+        ESP_LOGE("OSC", "Failed to get osc contents");
+        return;
+    }
+
+    ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", new_ip));
+
+
+    ESP_LOGI("OSC", "Set remote IP Successfull");
 }
 
 void handleRemotePort(OscMessage *msg, int channel)
