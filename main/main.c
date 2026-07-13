@@ -807,7 +807,7 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag,
             }
 
             // parse and validate channel (example valid range 1..16; adjust if needed)
-            int channel = parseChannelValidated(addr, r->prefix, 1, 16);
+            int channel = parseChannelValidated(addr, r->prefix, 1, 28);
             if (channel < 0) {
                 ESP_LOGW("OSC_Process", "Matched prefix '%s' but invalid channel in '%s'", r->prefix, addr);
                 flashLedRed();
