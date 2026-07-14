@@ -115,6 +115,7 @@ void init_default_Config()
     ESP_ERROR_CHECK(nvs_save_int("OSC", "address_Prefix", 0));
 
     // GPIO defaults
+    ESP_ERROR_CHECK(nvs_save_int("GPIO","Rate",100));
     for (int i = 1; i < PINCOUNT + 1; i++)
     {
 
@@ -1193,7 +1194,7 @@ void gpio_task(void *pv)
         send_digital_inputs();  // only sends on change
         send_analogue_inputs(); // sends every cycle
 
-        vTaskDelay(pdMS_TO_TICKS(100)); // 100 Hz
+        vTaskDelay(pdMS_TO_TICKS(nvs_load_int("GPIO","Rate",100))); 
     }
 }
 

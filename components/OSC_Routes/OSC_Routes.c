@@ -140,6 +140,17 @@ void handleAnalogueRead(OscMessage *msg, int channel)
 void handleAnalogueRate(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Set analogue rate");
+
+    int32_t New_Rate;
+    OscError err = OscMessageGetArgumentAsInt32(msg, &New_Rate);
+
+    if (err != 0)
+    {
+        ESP_LOGE("OSC", "Failed to get osc contents");
+        return;
+    }
+
+    ESP_ERROR_CHECK(nvs_save_int("GPIO", "Rate", New_Rate));
 }
 
 void handleAnalogueComparatorRead(OscMessage *msg, int channel)
