@@ -20,6 +20,7 @@ static inline int parseChannel(const char *addr, const char *prefix)
 }
 
 extern void sendPingMessage();
+extern void send_analogue_inputs();
 
 void handlePing(OscMessage *msg, int channel);
 void handleRemoteIp(OscMessage *msg, int channel);

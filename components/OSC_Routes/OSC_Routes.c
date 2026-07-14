@@ -135,6 +135,8 @@ void handleInputModeSerial(OscMessage *msg, int channel)
 void handleAnalogueRead(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Analogue read request");
+    
+    send_analogue_inputs();
 }
 
 void handleAnalogueRate(OscMessage *msg, int channel)
