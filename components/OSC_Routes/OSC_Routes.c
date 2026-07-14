@@ -135,7 +135,7 @@ void handleInputModeSerial(OscMessage *msg, int channel)
 void handleAnalogueRead(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Analogue read request");
-    
+
     send_analogue_inputs();
 }
 
@@ -174,11 +174,79 @@ void handleDigitalRead(OscMessage *msg, int channel)
 void handleDigitalUp(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Enable pull-up ch=%d", channel);
+
+    int gpio = channel;
+    // Extract integer argument
+    int32_t level;
+    OscError err = OscMessageGetArgumentAsInt32(msg, &level);
+    if (err != 0)
+    {
+        return;
+    }
+
+    if (level != 0)
+    {
+        // Configure pin
+        gpio_config_t cfg = {
+            .pin_bit_mask = 1ULL << gpio,
+            .mode = GPIO_MODE_INPUT_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_ENABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        };
+        gpio_config(&cfg);
+        return;
+    }
+
+    // Configure pin
+    gpio_config_t cfg = {
+        .pin_bit_mask = 1ULL << gpio,
+        .mode = GPIO_MODE_INPUT_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    };
+    gpio_config(&cfg);
 }
 
 void handleDigitalDown(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Enable pull-down ch=%d", channel);
+
+    int gpio = channel;
+    // Extract integer argument
+    int32_t level;
+    OscError err = OscMessageGetArgumentAsInt32(msg, &level);
+    if (err != 0)
+    {
+        return;
+    }
+
+    // Configure pin
+    if (level != 0)
+    {
+        // Configure pin
+        gpio_config_t cfg = {
+            .pin_bit_mask = 1ULL << gpio,
+            .mode = GPIO_MODE_INPUT_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        };
+        gpio_config(&cfg);
+        return;
+    }
+
+    // Configure pin
+    gpio_config_t cfg = {
+        .pin_bit_mask = 1ULL << gpio,
+        .mode = GPIO_MODE_INPUT_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    };
+    gpio_config(&cfg);
+}
+
+void handlePrintPinConfig(OscMessage *msg, int channel)
+{
+    gpio_dump_io_configuration(stdout, SOC_GPIO_VALID_GPIO_MASK);
 }
 
 /**************  OUTPUT MODES  **************/

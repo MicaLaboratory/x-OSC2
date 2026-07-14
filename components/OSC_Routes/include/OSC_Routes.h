@@ -22,6 +22,8 @@ static inline int parseChannel(const char *addr, const char *prefix)
 extern void sendPingMessage();
 extern void send_analogue_inputs();
 
+void handlePrintPinConfig(OscMessage *msg, int channel);
+
 void handlePing(OscMessage *msg, int channel);
 void handleRemoteIp(OscMessage *msg, int channel);
 void handleRemotePort(OscMessage *msg, int channel);
@@ -72,6 +74,9 @@ void handleSerialFraming(OscMessage *msg, int channel);
 void flashLedRed(void);
 
 static const OscRoute ROUTES[] = {
+
+    // Debug
+    { "/pdgf", false, handlePrintPinConfig},
 
     // Ping
     { "/ping", false, handlePing },
