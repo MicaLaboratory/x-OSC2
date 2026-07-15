@@ -783,7 +783,7 @@ static int parseChannelValidated(const char *addr, const char *prefix, const int
         }
     }
 
-    int ch = atoi(p);
+    const int ch = atoi(p);
     if (ch < min_ch || ch > max_ch)
     {
         return -1;
@@ -817,7 +817,7 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMes
             }
 
             // parse and validate channel (example valid range 1..16; adjust if needed)
-            int channel = parseChannelValidated(addr, r->prefix, 1, 28);
+            const int channel = parseChannelValidated(addr, r->prefix, 1, 28);
             if (channel < 0)
             {
                 ESP_LOGW("OSC_Process", "Matched prefix '%s' but invalid channel in '%s'", r->prefix, addr);
