@@ -41,6 +41,7 @@
 #include "OscPacket.h"
 #include "OscSlip.h"
 #include "Osc99.h"
+#include "OSC_Routes.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
@@ -114,6 +115,7 @@ void init_default_Config()
     ESP_ERROR_CHECK(nvs_save_int("OSC", "address_Prefix", 0));
 
     // GPIO defaults
+    ESP_ERROR_CHECK(nvs_save_int("GPIO","Rate",100));
     for (int i = 1; i < PINCOUNT + 1; i++)
     {
 
@@ -255,8 +257,8 @@ void wifi_init_sta(void)
         pass_len = 64;
     memcpy(wifi_sta_config.sta.password, PASS, pass_len);
 
-    ESP_LOGE("SSID","%s",SSID);
-    ESP_LOGE("PASS","%s",PASS);
+    ESP_LOGE("SSID", "%s", SSID);
+    ESP_LOGE("PASS", "%s", PASS);
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config));
 
@@ -755,42 +757,91 @@ char *getCurrentIP()
 
 void sendPingMessage();
 // OSC message server
+
+#include <ctype.h>
+#include <string.h>
+#include <stdlib.h>
+#include "esp_log.h"
+
+// Helper: parse channel and validate numeric suffix
+static int parseChannelValidated(const char *addr, const char *prefix, int min_ch, int max_ch)
+{
+    const char *p = addr + strlen(prefix);
+    if (!p || *p == '\0')
+    {
+        return -1; // no suffix
+    }
+
+    // ensure suffix is numeric (allow multi-digit)
+    for (const char *q = p; *q; ++q)
+    {
+        if (!isdigit((unsigned char)*q))
+        {
+            return -1;
+        }
+    }
+
+    int ch = atoi(p);
+    if (ch < min_ch || ch > max_ch)
+    {
+        return -1;
+    }
+    return ch;
+}
+
 void ProcessMessage(const OscTimeTag *const oscTimeTag,
                     OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
-    ESP_LOGI("OSC_Process", "%s", addr);
-    // Match prefix
-
-    if (OscAddressMatch(addr, "/ping"))
+    if (addr == NULL)
     {
-        sendPingMessage();
-    }
-
-    if (OscAddressMatch(addr, "/outputs/digital/6"))
-    {
-        ESP_LOGI("OSC_Proccess", "addr");
-        // Extract channel number
-        int gpio = atoi(addr + strlen("/outputs/digital/"));
-
-        // Extract integer argument
-        int32_t level;
-        if (OscMessageGetArgumentAsInt32(oscMessage, &level) != OscErrorNone)
-        {
-            return;
-        }
-
-        // Configure pin
-        gpio_config_t cfg = {
-            .pin_bit_mask = 1ULL << gpio,
-            .mode = GPIO_MODE_OUTPUT,
-        };
-        gpio_config(&cfg);
-
-        // Set pin
-        gpio_set_level(gpio, level ? 1 : 0);
+        ESP_LOGW("OSC_Process", "NULL address in message");
+        flashLedRed();
         return;
     }
+
+    const size_t route_count = sizeof(ROUTES) / sizeof(ROUTES[0]);
+
+    for (size_t i = 0; i < route_count; ++i)
+    {
+        const OscRoute *r = &ROUTES[i];
+
+        if (r->has_channel)
+        {
+            // prefix match: route prefix must match start of addr
+            size_t plen = strlen(r->prefix);
+            if (strncmp(addr, r->prefix, plen) != 0)
+            {
+                continue;
+            }
+
+            // parse and validate channel (example valid range 1..16; adjust if needed)
+            int channel = parseChannelValidated(addr, r->prefix, 1, 28);
+            if (channel < 0)
+            {
+                ESP_LOGW("OSC_Process", "Matched prefix '%s' but invalid channel in '%s'", r->prefix, addr);
+                flashLedRed();
+                return;
+            }
+
+            // call handler with validated channel
+            r->handler(oscMessage, channel);
+            return;
+        }
+        else
+        {
+            // exact match for non-channel routes
+            if (OscAddressMatch(addr, r->prefix))
+            {
+                r->handler(oscMessage, -1);
+                return;
+            }
+        }
+    }
+
+    // No match → flash red LED
+    ESP_LOGW("OSC_Process", "No route for address '%s'", addr);
+    flashLedRed();
 }
 
 /* UDP socket tests */
@@ -863,8 +914,8 @@ static void udp_server_task(void *pvParameters)
 
         ESP_LOGI(TAG, "Socket created");
 
-        struct timeval timeout = {.tv_sec = 10, .tv_usec = 0};
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        // struct timeval timeout = {.tv_sec = 10, .tv_usec = 0};
+        // setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
         int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
         if (err < 0)
@@ -928,12 +979,13 @@ void udp_send_osc(OscPacket msg)
         return;
     }
 
-    char *ip_string = nvs_load_str("OSC", "Remote_IP","192.168.4.2");
+    char *ip_string = nvs_load_str("OSC", "Remote_IP", "192.168.4.2");
+    // char *ip_string = "192.168.0.45";
 
     const int port_num = nvs_load_int("OSC", "Remote_Port", 8000);
 
-    ESP_LOGI("UDP_REMOTE_IP","Value: %s",ip_string);
-    ESP_LOGI("UDP_REMOTE_PORT","%d",port_num);
+    // ESP_LOGI("UDP_REMOTE_IP", "Value: %s", ip_string);
+    // ESP_LOGI("UDP_REMOTE_PORT", "%d", port_num);
 
     const struct sockaddr_in dest_addr = {
         .sin_family = AF_INET,
@@ -947,11 +999,11 @@ void udp_send_osc(OscPacket msg)
         msg.size,
         0,
         (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        
 
     if (err < 0)
     {
-        ESP_LOGE(TAG, "Send failed: errno %d", errno);
+        ESP_LOGE("UDP_SEND", "Send failed: errno %d", errno);
+        ESP_LOGI("UDP_SEND", "free_heap=%u", esp_get_free_heap_size());
     }
     else
     {
@@ -968,15 +1020,6 @@ void sendOscContents(const void *const oscContents)
     {
         return;
     }
-
-    // encode a slip packet
-    // char slipPacket[MAX_OSC_PACKET_SIZE];
-    // size_t slipPacketSize;
-    // if (OscSlipEncodePacket(&OscPacket, &slipPacketSize, slipPacket, sizeof(slipPacket))){
-    //     return;
-    // }
-
-    // send Packet
 
     udp_send_osc(OscPacket);
 }
@@ -1151,7 +1194,7 @@ void gpio_task(void *pv)
         send_digital_inputs();  // only sends on change
         send_analogue_inputs(); // sends every cycle
 
-        vTaskDelay(pdMS_TO_TICKS(10)); // 100 Hz
+        vTaskDelay(pdMS_TO_TICKS(nvs_load_int("GPIO","Rate",100))); 
     }
 }
 
@@ -1166,12 +1209,8 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-
-    
-    ESP_ERROR_CHECK(nvs_save_int("test", "count", 123));
-    int32_t v = nvs_load_int("test", "count", -1);
-    ESP_LOGI("NVS", "Loaded count = %" PRId32, v);
-
+    flashLedRed();
+    flashLedRed();
 
     int AP_MODE = nvs_load_int("Config", "Network", -1);
     if (AP_MODE < AP || AP_MODE >= AP_MODE_END)
@@ -1276,7 +1315,6 @@ void app_main(void)
 #ifdef CONFIG_EXAMPLE_IPV6
     xTaskCreate(udp_server_task, "udp_server", 4096, (void *)AF_INET6, 5, NULL);
 #endif
-
 
     adc_init();
 
