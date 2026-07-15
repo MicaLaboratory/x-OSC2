@@ -69,6 +69,8 @@
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
 #endif
 
+#define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
+
 /* AP Configuration */
 #define EXAMPLE_ESP_WIFI_AP_SSID CONFIG_ESP_WIFI_AP_SSID
 #define EXAMPLE_ESP_WIFI_AP_PASSWD CONFIG_ESP_WIFI_AP_PASSWORD
@@ -1020,7 +1022,6 @@ void sendOscContents(const void *const oscContents)
     {
         return;
     }
-
     udp_send_osc(OscPacket);
 }
 
@@ -1044,7 +1045,7 @@ void sendPingMessage()
 
     // 3. Add firmware version
     // You can replace this with your own version string
-    OscMessageAddString(&oscMessage, "0.0.1");
+    OscMessageAddString(&oscMessage, FIRMWARE_VERSION);
 
     // Send the OSC message
     sendOscContents(&oscMessage);
