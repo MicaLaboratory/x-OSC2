@@ -291,24 +291,24 @@ void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_netif_sta)
 
 static const char *TAG = "HTTP_SERVER";
 
-void handler(httpd_req_t *req)
-{
-    int sockfd = httpd_req_to_sockfd(req);
+// void handler(httpd_req_t *req)
+// {
+//     const int sockfd = httpd_req_to_sockfd(req);
 
-    struct sockaddr_storage addr;
-    socklen_t addr_len = sizeof(addr);
+//     struct sockaddr_storage addr;
+//     socklen_t addr_len = sizeof(addr);
 
-    getpeername(sockfd, (struct sockaddr *)&addr, &addr_len);
+//     getpeername(sockfd, (struct sockaddr *)&addr, &addr_len);
 
-    if (addr.ss_family == AF_INET)
-    {
-        struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
-        char ip[16];
-        inet_ntop(AF_INET, &addr_in->sin_addr, ip, sizeof(ip));
+//     if (addr.ss_family == AF_INET)
+//     {
+//         struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
+//         char ip[16];
+//         inet_ntop(AF_INET, &addr_in->sin_addr, ip, sizeof(ip));
 
-        ESP_LOGI("HTTP", "Client IP: %s", ip);
-    }
-}
+//         ESP_LOGI("HTTP", "Client IP: %s", ip);
+//     }
+// }
 
 /* An HTTP GET handler */
 static esp_err_t base_handler(httpd_req_t *req)
