@@ -345,8 +345,8 @@ static esp_err_t Network_Handler(httpd_req_t *req)
     if (httpd_query_key_value(query, "mode", mode, sizeof(mode)) != ESP_OK)
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing mode");
 
-    bool isAP = strcmp(mode, "AP") == 0;
-    bool isSTA = strcmp(mode, "STA") == 0;
+    const bool isAP = strcmp(mode, "AP") == 0;
+    const bool isSTA = strcmp(mode, "STA") == 0;
 
     if (isAP)
     {
@@ -461,7 +461,7 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
 static esp_err_t GPIO_Handler(httpd_req_t *req)
 {
     // --- Read POST body ---
-    int total = req->content_len;
+    const int total = req->content_len;
     if (total <= 0 || total > 1024)
     {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid body");
@@ -1235,6 +1235,20 @@ void app_main(void)
     const wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
+    // Register handlers (STA-related)
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(
+            WIFI_EVENT,
+            ESP_EVENT_ANY_ID,
+            &wifi_event_handler,
+            NULL,
+            NULL));
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(
+            IP_EVENT,
+            IP_EVENT_STA_GOT_IP,
+            &wifi_event_handler,
+            NULL,
+            NULL));
+
     if (AP_MODE == AP)
     {
         // --- AP ONLY PATH ---
@@ -1256,20 +1270,6 @@ void app_main(void)
         // Create event group only for STA
         s_wifi_event_group = xEventGroupCreate();
         assert(s_wifi_event_group != NULL);
-
-        // Register handlers (STA-related)
-        ESP_ERROR_CHECK(esp_event_handler_instance_register(
-            WIFI_EVENT,
-            ESP_EVENT_ANY_ID,
-            &wifi_event_handler,
-            NULL,
-            NULL));
-        ESP_ERROR_CHECK(esp_event_handler_instance_register(
-            IP_EVENT,
-            IP_EVENT_STA_GOT_IP,
-            &wifi_event_handler,
-            NULL,
-            NULL));
 
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_LOGI(TAG_STA, "ESP_WIFI_MODE_STA");
