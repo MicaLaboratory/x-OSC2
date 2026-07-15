@@ -1309,21 +1309,16 @@ void app_main(void)
         (void)server;
     }
 
-#ifdef CONFIG_EXAMPLE_IPV4
     xTaskCreate(udp_server_task, "udp_server", 12288, (void *)AF_INET, 5, NULL);
-#endif
-#ifdef CONFIG_EXAMPLE_IPV6
-    xTaskCreate(udp_server_task, "udp_server", 4096, (void *)AF_INET6, 5, NULL);
-#endif
 
     adc_init();
 
     xTaskCreate(
-        gpio_task,   // Task function
-        "GPIO Task", // Name (for debugging)
-        8192,        // Stack size in bytes
-        NULL,        // Task parameters
-        5,           // Priority (1–10 typical)
-        NULL         // Task handle (optional)
+        gpio_task,   
+        "GPIO Task", 
+        8192,        
+        NULL,        
+        5,           
+        NULL         
     );
 }
