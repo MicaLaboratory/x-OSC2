@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+
 #include "OscAddress.h"
 #include "OscMessage.h"
 #include "esp_err.h"
 #include "nvs_flash.h"
 #include "nvs.h"
-#include "main.h"
+// #include "main.h"
 
 #include "esp_system.h"
 #include "driver/gpio.h"
@@ -36,17 +38,29 @@
 #include "lwip/err.h"
 #include "lwip/sockets.h"
 #include "lwip/sys.h"
+
 #include "cJSON.h"
 #include "OscError.h"
 #include "OscPacket.h"
 #include "OscSlip.h"
 #include "Osc99.h"
 #include "OSC_Routes.h"
+
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
+#include "esp_log.h"
+
 #include "NVS_Helper_Funcs.h"
+
+typedef enum
+{
+    AP = 1,
+    STA,
+    AP_MODE_END
+} AP_Mode;
+
 
 #define PINCOUNT 28
 #define MAX_ATTEMPS 10
@@ -68,6 +82,8 @@
 #elif CONFIG_ESP_WIFI_AUTH_WAPI_PSK
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
 #endif
+
+#define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
 
 /* AP Configuration */
 #define EXAMPLE_ESP_WIFI_AP_SSID CONFIG_ESP_WIFI_AP_SSID
@@ -115,7 +131,7 @@ void init_default_Config()
     ESP_ERROR_CHECK(nvs_save_int("OSC", "address_Prefix", 0));
 
     // GPIO defaults
-    ESP_ERROR_CHECK(nvs_save_int("GPIO","Rate",100));
+    ESP_ERROR_CHECK(nvs_save_int("GPIO", "Rate", 100));
     for (int i = 1; i < PINCOUNT + 1; i++)
     {
 
@@ -136,8 +152,7 @@ void init_default_Config()
 /* FreeRTOS event group to signal when we are connected/disconnected */
 static EventGroupHandle_t s_wifi_event_group;
 
-static void wifi_event_handler(void *arg, esp_event_base_t event_base,
-                               int32_t event_id, void *event_data)
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED)
     {
@@ -282,26 +297,26 @@ void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_netif_sta)
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(esp_netif_ap));
 }
 
-static const char *TAG = "HTTP_SERVER";
+// static const char *TAG = "HTTP_SERVER";
 
-void handler(httpd_req_t *req)
-{
-    int sockfd = httpd_req_to_sockfd(req);
+// void handler(httpd_req_t *req)
+// {
+//     const int sockfd = httpd_req_to_sockfd(req);
 
-    struct sockaddr_storage addr;
-    socklen_t addr_len = sizeof(addr);
+//     struct sockaddr_storage addr;
+//     socklen_t addr_len = sizeof(addr);
 
-    getpeername(sockfd, (struct sockaddr *)&addr, &addr_len);
+//     getpeername(sockfd, (struct sockaddr *)&addr, &addr_len);
 
-    if (addr.ss_family == AF_INET)
-    {
-        struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
-        char ip[16];
-        inet_ntop(AF_INET, &addr_in->sin_addr, ip, sizeof(ip));
+//     if (addr.ss_family == AF_INET)
+//     {
+//         struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
+//         char ip[16];
+//         inet_ntop(AF_INET, &addr_in->sin_addr, ip, sizeof(ip));
 
-        ESP_LOGI("HTTP", "Client IP: %s", ip);
-    }
-}
+//         ESP_LOGI("HTTP", "Client IP: %s", ip);
+//     }
+// }
 
 /* An HTTP GET handler */
 static esp_err_t base_handler(httpd_req_t *req)
@@ -338,8 +353,8 @@ static esp_err_t Network_Handler(httpd_req_t *req)
     if (httpd_query_key_value(query, "mode", mode, sizeof(mode)) != ESP_OK)
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing mode");
 
-    bool isAP = strcmp(mode, "AP") == 0;
-    bool isSTA = strcmp(mode, "STA") == 0;
+    const bool isAP = strcmp(mode, "AP") == 0;
+    const bool isSTA = strcmp(mode, "STA") == 0;
 
     if (isAP)
     {
@@ -403,7 +418,7 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
     char query[256];
     char value[64];
 
-    size_t qlen = httpd_req_get_url_query_len(req);
+    const size_t qlen = httpd_req_get_url_query_len(req);
     if (qlen == 0 || qlen >= sizeof(query))
     {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing query");
@@ -422,7 +437,7 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
     if (httpd_query_key_value(query, "OSC-Remote-Port", value, sizeof(value)) != ESP_OK)
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing OSC-Remote-Port");
 
-    int remote_port = atoi(value);
+    const int remote_port = atoi(value);
 
     // --- Local IP ---
     if (httpd_query_key_value(query, "OSC-Local", value, sizeof(value)) != ESP_OK)
@@ -435,7 +450,7 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
     if (httpd_query_key_value(query, "OSC-Local-Port", value, sizeof(value)) != ESP_OK)
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing OSC-Local-Port");
 
-    int local_port = atoi(value);
+    const int local_port = atoi(value);
 
     // --- Save to NVS ---
     ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", remote_ip));
@@ -454,14 +469,14 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
 static esp_err_t GPIO_Handler(httpd_req_t *req)
 {
     // --- Read POST body ---
-    int total = req->content_len;
+    const int total = req->content_len;
     if (total <= 0 || total > 1024)
     {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid body");
     }
 
     char body[1024];
-    int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
 
     if (received <= 0)
     {
@@ -537,8 +552,8 @@ static esp_err_t gpio_json_handler(httpd_req_t *req)
         snprintf(key_io, sizeof(key_io), "Pin-%d-IO", i);
 
         // Load values
-        int mode = nvs_load_int("Pins", key_mode, 0);
-        int io = nvs_load_int("Pins", key_io, 0);
+        const int mode = nvs_load_int("Pins", key_mode, 0);
+        const int io = nvs_load_int("Pins", key_io, 0);
 
         // Append JSON entry
         offset += snprintf(json + offset, sizeof(json) - offset,
@@ -562,7 +577,7 @@ static esp_err_t network_json_handler(httpd_req_t *req)
     int offset = 0;
 
     // Load mode
-    int mode = nvs_load_int("Config", "Network", AP);
+    const int mode = nvs_load_int("Config", "Network", AP);
 
     // Load AP settings
     char *ap_ssid = nvs_load_str("AP", "SSID", "");
@@ -609,8 +624,8 @@ static esp_err_t osc_json_handler(httpd_req_t *req)
     // char *local_ip  = nvs_load_str("OSC", "Local_IP",  "0.0.0.0");
     char *local_ip = getCurrentIP();
 
-    int remote_port = nvs_load_int("OSC", "Remote_Port", 9000);
-    int local_port = nvs_load_int("OSC", "Local_Port", 8000);
+    const int remote_port = nvs_load_int("OSC", "Remote_Port", 9000);
+    const int local_port = nvs_load_int("OSC", "Local_Port", 8000);
 
     // Build JSON
     offset += snprintf(json + offset, sizeof(json) - offset,
@@ -639,13 +654,15 @@ static const httpd_uri_t base_uri = {
     .uri = "/",
     .method = HTTP_GET,
     .handler = base_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL,
+};
 
 static const httpd_uri_t reset_uri = {
     .uri = "/reset",
     .method = HTTP_GET,
     .handler = Conf_Reset,
-    .user_ctx = NULL};
+    .user_ctx = NULL,
+};
 
 static const httpd_uri_t network_uri = {
     .uri = "/network",
@@ -660,6 +677,7 @@ static const httpd_uri_t OSC_uri = {
     .handler = OSC_Handler,
     .user_ctx = NULL,
 };
+
 static const httpd_uri_t GPIO_uri = {
     .uri = "/GPIO",
     .method = HTTP_POST,
@@ -671,19 +689,22 @@ static const httpd_uri_t gpio_json_uri = {
     .uri = "/gpio.json",
     .method = HTTP_GET,
     .handler = gpio_json_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL,
+};
 
 static const httpd_uri_t osc_json_uri = {
     .uri = "/osc.json",
     .method = HTTP_GET,
     .handler = osc_json_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL,
+};
 
 static const httpd_uri_t network_json_uri = {
     .uri = "/network.json",
     .method = HTTP_GET,
     .handler = network_json_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL,
+};
 
 // Defines the Full Http server
 httpd_handle_t start_webserver()
@@ -698,7 +719,7 @@ httpd_handle_t start_webserver()
     if (httpd_start(&server, &config) == ESP_OK)
     {
 
-        ESP_LOGI(TAG, "Server ok, registering the URI handlers...");
+        ESP_LOGI("HTTP Server", "Server ok, registering the URI handlers...");
 
         // Routes are Registered Here that are visible but must be linked through their uri handlers
 
@@ -721,7 +742,7 @@ httpd_handle_t start_webserver()
         return server;
     }
 
-    ESP_LOGI(TAG, "Error starting server");
+    ESP_LOGI("HTTP Server", "Error starting server");
 
     return NULL;
 }
@@ -733,17 +754,18 @@ char *getCurrentIP()
     static char ip_str[16];
     esp_netif_ip_info_t ip_info;
 
-    int AP_MODE = nvs_load_int("Config", "Network", -1);
+    const int AP_MODE = nvs_load_int("Config", "Network", -1);
 
     esp_netif_t *netif = NULL;
 
-    if (AP_MODE == STA)
+    switch (AP_MODE)
     {
+    case STA:
         netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    }
-    else if (AP_MODE == AP)
-    {
+        break;
+    case AP:
         netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+        break;
     }
 
     if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK)
@@ -755,16 +777,10 @@ char *getCurrentIP()
     return "0.0.0.0";
 }
 
-void sendPingMessage();
 // OSC message server
 
-#include <ctype.h>
-#include <string.h>
-#include <stdlib.h>
-#include "esp_log.h"
-
 // Helper: parse channel and validate numeric suffix
-static int parseChannelValidated(const char *addr, const char *prefix, int min_ch, int max_ch)
+static int parseChannelValidated(const char *addr, const char *prefix, const int min_ch, const int max_ch)
 {
     const char *p = addr + strlen(prefix);
     if (!p || *p == '\0')
@@ -781,7 +797,7 @@ static int parseChannelValidated(const char *addr, const char *prefix, int min_c
         }
     }
 
-    int ch = atoi(p);
+    const int ch = atoi(p);
     if (ch < min_ch || ch > max_ch)
     {
         return -1;
@@ -789,8 +805,7 @@ static int parseChannelValidated(const char *addr, const char *prefix, int min_c
     return ch;
 }
 
-void ProcessMessage(const OscTimeTag *const oscTimeTag,
-                    OscMessage *const oscMessage)
+void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
     if (addr == NULL)
@@ -816,7 +831,7 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag,
             }
 
             // parse and validate channel (example valid range 1..16; adjust if needed)
-            int channel = parseChannelValidated(addr, r->prefix, 1, 28);
+            const int channel = parseChannelValidated(addr, r->prefix, 1, 28);
             if (channel < 0)
             {
                 ESP_LOGW("OSC_Process", "Matched prefix '%s' but invalid channel in '%s'", r->prefix, addr);
@@ -846,15 +861,13 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag,
 
 /* UDP socket tests */
 
-#define PORT 3333
 static int sock = -1;
 static struct sockaddr_storage last_client_addr;
 static socklen_t last_client_len = 0;
 
-void sendPingMessage();
-
 static void udp_server_task(void *pvParameters)
 {
+    const char *TAG = "UDP Server";
     char rx_buffer[128];
     char addr_str[128];
     int addr_family = (int)pvParameters;
@@ -862,11 +875,11 @@ static void udp_server_task(void *pvParameters)
     struct sockaddr_in6 dest_addr;
 
     // Load local bind port from NVS
-    int32_t local_port = nvs_load_int("OSC", "Local_Port", 3333);
+    const int32_t local_port = nvs_load_int("OSC", "Local_Port", 3333);
 
     // Load remote IP + port from NVS (used for sending)
     char *remote_ip = nvs_load_str("OSC", "Remote_IP", "0.0.0.0");
-    int32_t remote_port = nvs_load_int("OSC", "Remote_Port", 10000);
+    const int32_t remote_port = nvs_load_int("OSC", "Remote_Port", 10000);
 
     // Build last_client_addr from NVS values (IPv4 only)
     struct sockaddr_in client_addr;
@@ -975,7 +988,7 @@ void udp_send_osc(OscPacket msg)
 {
     if (sock < 0)
     {
-        ESP_LOGE(TAG, "Socket not initialized");
+        ESP_LOGE("UDP_Send", "Socket not initialized");
         return;
     }
 
@@ -1020,7 +1033,6 @@ void sendOscContents(const void *const oscContents)
     {
         return;
     }
-
     udp_send_osc(OscPacket);
 }
 
@@ -1044,16 +1056,11 @@ void sendPingMessage()
 
     // 3. Add firmware version
     // You can replace this with your own version string
-    OscMessageAddString(&oscMessage, "0.0.1");
+    OscMessageAddString(&oscMessage, FIRMWARE_VERSION);
 
     // Send the OSC message
     sendOscContents(&oscMessage);
 }
-
-void oscDigitalSend(int pinval, int pinnum) {
-};
-
-void oscAnalogueSend(float pinval, int pinnum);
 
 // Pin reads
 adc_oneshot_unit_handle_t adc_handle;
@@ -1068,7 +1075,7 @@ void adc_init(void)
     for (int i = 2; i < 6 + 1; i++)
     {
 
-        int channel = i - 1;
+        const int channel = i - 1;
 
         adc_oneshot_chan_cfg_t chan_cfg = {
             .atten = ADC_ATTEN_DB_12,
@@ -1079,7 +1086,7 @@ void adc_init(void)
     }
 }
 
-int readDigitalPin(int pin)
+int readDigitalPin(const int pin)
 {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << pin),
@@ -1093,9 +1100,9 @@ int readDigitalPin(int pin)
     return gpio_get_level(pin);
 }
 
-float readAnaloguePin(int pin)
+float readAnaloguePin(const int pin)
 {
-    int channel = pin - 1;
+    const int channel = pin - 1;
 
     int raw = 0;
     ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, channel, &raw));
@@ -1170,7 +1177,7 @@ void send_analogue_inputs(void)
         char key_mode[32];
         snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
 
-        int mode = nvs_load_int("Pins", key_mode, 0);
+        const int mode = nvs_load_int("Pins", key_mode, 0);
 
         if (mode == ANALOGUE)
         {
@@ -1194,7 +1201,7 @@ void gpio_task(void *pv)
         send_digital_inputs();  // only sends on change
         send_analogue_inputs(); // sends every cycle
 
-        vTaskDelay(pdMS_TO_TICKS(nvs_load_int("GPIO","Rate",100))); 
+        vTaskDelay(pdMS_TO_TICKS(nvs_load_int("GPIO", "Rate", 100)));
     }
 }
 
@@ -1212,7 +1219,7 @@ void app_main(void)
     flashLedRed();
     flashLedRed();
 
-    int AP_MODE = nvs_load_int("Config", "Network", -1);
+    const int AP_MODE = nvs_load_int("Config", "Network", -1);
     if (AP_MODE < AP || AP_MODE >= AP_MODE_END)
     {
         init_default_Config();
@@ -1234,8 +1241,22 @@ void app_main(void)
         sta = esp_netif_create_default_wifi_sta();
     }
 
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    const wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    // Register handlers (STA-related)
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        WIFI_EVENT,
+        ESP_EVENT_ANY_ID,
+        &wifi_event_handler,
+        NULL,
+        NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        IP_EVENT,
+        IP_EVENT_STA_GOT_IP,
+        &wifi_event_handler,
+        NULL,
+        NULL));
 
     if (AP_MODE == AP)
     {
@@ -1258,20 +1279,6 @@ void app_main(void)
         // Create event group only for STA
         s_wifi_event_group = xEventGroupCreate();
         assert(s_wifi_event_group != NULL);
-
-        // Register handlers (STA-related)
-        ESP_ERROR_CHECK(esp_event_handler_instance_register(
-            WIFI_EVENT,
-            ESP_EVENT_ANY_ID,
-            &wifi_event_handler,
-            NULL,
-            NULL));
-        ESP_ERROR_CHECK(esp_event_handler_instance_register(
-            IP_EVENT,
-            IP_EVENT_STA_GOT_IP,
-            &wifi_event_handler,
-            NULL,
-            NULL));
 
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_LOGI(TAG_STA, "ESP_WIFI_MODE_STA");
@@ -1309,21 +1316,15 @@ void app_main(void)
         (void)server;
     }
 
-#ifdef CONFIG_EXAMPLE_IPV4
     xTaskCreate(udp_server_task, "udp_server", 12288, (void *)AF_INET, 5, NULL);
-#endif
-#ifdef CONFIG_EXAMPLE_IPV6
-    xTaskCreate(udp_server_task, "udp_server", 4096, (void *)AF_INET6, 5, NULL);
-#endif
 
     adc_init();
 
     xTaskCreate(
-        gpio_task,   // Task function
-        "GPIO Task", // Name (for debugging)
-        8192,        // Stack size in bytes
-        NULL,        // Task parameters
-        5,           // Priority (1–10 typical)
-        NULL         // Task handle (optional)
-    );
+        gpio_task,
+        "GPIO Task",
+        8192,
+        NULL,
+        5,
+        NULL);
 }

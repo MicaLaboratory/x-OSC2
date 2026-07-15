@@ -139,4 +139,11 @@ menu "x-osc-2 Configuration"
 
 
     endmenu
+    menu "Firmware Version"
+        config  FIRMWARE_VERSION
+            string  "Current Firmware Version"
+            default "0.0.1"
+            help 
+                Sets the current firmware version the app responds with
+    endmenu
 endmenu

@@ -54,7 +54,7 @@ void handleRemoteIp(OscMessage *msg, int channel)
     ESP_LOGI("OSC", "Set remote IP");
     char new_ip[64];
     OscError err = OscMessageGetArgumentAsString(msg, new_ip, sizeof(new_ip));
-    if (err != 0)
+    if (err != OscErrorNone)
     {
         ESP_LOGE("OSC", "Failed to get osc contents");
         return;
@@ -70,7 +70,7 @@ void handleRemotePort(OscMessage *msg, int channel)
     ESP_LOGI("OSC", "Set remote port");
     int32_t new_port;
     OscError err = OscMessageGetArgumentAsInt32(msg, &new_port);
-    if (err != 0)
+    if (err != OscErrorNone)
     {
         ESP_LOGE("OSC", "Failed to get osc contents");
         return;
@@ -87,7 +87,7 @@ void handleLocalPort(OscMessage *msg, int channel)
 
     int32_t new_port;
     OscError err = OscMessageGetArgumentAsInt32(msg, &new_port);
-    if (err != 0)
+    if (err != OscErrorNone)
     {
         ESP_LOGE("OSC", "Failed to get osc contents");
         return;
@@ -146,7 +146,7 @@ void handleAnalogueRate(OscMessage *msg, int channel)
     int32_t New_Rate;
     OscError err = OscMessageGetArgumentAsInt32(msg, &New_Rate);
 
-    if (err != 0)
+    if (err != OscErrorNone)
     {
         ESP_LOGE("OSC", "Failed to get osc contents");
         return;
@@ -175,11 +175,11 @@ void handleDigitalUp(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Enable pull-up ch=%d", channel);
 
-    int gpio = channel;
+    const int gpio = channel;
     // Extract integer argument
     int32_t level;
     OscError err = OscMessageGetArgumentAsInt32(msg, &level);
-    if (err != 0)
+    if (err != OscErrorNone)
     {
         return;
     }
@@ -211,11 +211,11 @@ void handleDigitalDown(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Enable pull-down ch=%d", channel);
 
-    int gpio = channel;
+    const int gpio = channel;
     // Extract integer argument
     int32_t level;
     OscError err = OscMessageGetArgumentAsInt32(msg, &level);
-    if (err != 0)
+    if (err != OscErrorNone)
     {
         return;
     }
@@ -274,11 +274,11 @@ void handleOutputModeSerial(OscMessage *msg, int channel)
 void handleDigitalOutput(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Digital output ch=%d", channel);
-    int gpio = channel;
+    const int gpio = channel;
     // Extract integer argument
     int32_t level;
     OscError err = OscMessageGetArgumentAsInt32(msg, &level);
-    if (err != 0)
+    if (err != OscErrorNone)
     {
         return;
     }
