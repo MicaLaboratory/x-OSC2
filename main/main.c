@@ -289,7 +289,7 @@ void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_netif_sta)
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(esp_netif_ap));
 }
 
-static const char *TAG = "HTTP_SERVER";
+// static const char *TAG = "HTTP_SERVER";
 
 // void handler(httpd_req_t *req)
 // {
@@ -711,7 +711,7 @@ httpd_handle_t start_webserver()
     if (httpd_start(&server, &config) == ESP_OK)
     {
 
-        ESP_LOGI(TAG, "Server ok, registering the URI handlers...");
+        ESP_LOGI("HTTP Server", "Server ok, registering the URI handlers...");
 
         // Routes are Registered Here that are visible but must be linked through their uri handlers
 
@@ -734,7 +734,7 @@ httpd_handle_t start_webserver()
         return server;
     }
 
-    ESP_LOGI(TAG, "Error starting server");
+    ESP_LOGI("HTTP Server", "Error starting server");
 
     return NULL;
 }
@@ -859,6 +859,7 @@ static socklen_t last_client_len = 0;
 
 static void udp_server_task(void *pvParameters)
 {
+    const char *TAG = "UDP Server";
     char rx_buffer[128];
     char addr_str[128];
     int addr_family = (int)pvParameters;
@@ -979,7 +980,7 @@ void udp_send_osc(OscPacket msg)
 {
     if (sock < 0)
     {
-        ESP_LOGE(TAG, "Socket not initialized");
+        ESP_LOGE("UDP_Send", "Socket not initialized");
         return;
     }
 
