@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+
 #include "OscAddress.h"
 #include "OscMessage.h"
 #include "esp_err.h"
 #include "nvs_flash.h"
 #include "nvs.h"
-#include "main.h"
+// #include "main.h"
 
 #include "esp_system.h"
 #include "driver/gpio.h"
@@ -36,22 +38,29 @@
 #include "lwip/err.h"
 #include "lwip/sockets.h"
 #include "lwip/sys.h"
+
 #include "cJSON.h"
 #include "OscError.h"
 #include "OscPacket.h"
 #include "OscSlip.h"
 #include "Osc99.h"
 #include "OSC_Routes.h"
+
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#include <ctype.h>
-#include <string.h>
-#include <stdlib.h>
 #include "esp_log.h"
 
 #include "NVS_Helper_Funcs.h"
+
+typedef enum
+{
+    AP = 1,
+    STA,
+    AP_MODE_END
+} AP_Mode;
+
 
 #define PINCOUNT 28
 #define MAX_ATTEMPS 10
@@ -143,8 +152,7 @@ void init_default_Config()
 /* FreeRTOS event group to signal when we are connected/disconnected */
 static EventGroupHandle_t s_wifi_event_group;
 
-static void wifi_event_handler(void *arg, esp_event_base_t event_base,
-                               int32_t event_id, void *event_data)
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED)
     {
@@ -1237,18 +1245,18 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
     // Register handlers (STA-related)
-        ESP_ERROR_CHECK(esp_event_handler_instance_register(
-            WIFI_EVENT,
-            ESP_EVENT_ANY_ID,
-            &wifi_event_handler,
-            NULL,
-            NULL));
-        ESP_ERROR_CHECK(esp_event_handler_instance_register(
-            IP_EVENT,
-            IP_EVENT_STA_GOT_IP,
-            &wifi_event_handler,
-            NULL,
-            NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        WIFI_EVENT,
+        ESP_EVENT_ANY_ID,
+        &wifi_event_handler,
+        NULL,
+        NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        IP_EVENT,
+        IP_EVENT_STA_GOT_IP,
+        &wifi_event_handler,
+        NULL,
+        NULL));
 
     if (AP_MODE == AP)
     {
