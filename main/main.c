@@ -848,7 +848,6 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag,
 
 /* UDP socket tests */
 
-#define PORT 3333
 static int sock = -1;
 static struct sockaddr_storage last_client_addr;
 static socklen_t last_client_len = 0;
@@ -864,11 +863,11 @@ static void udp_server_task(void *pvParameters)
     struct sockaddr_in6 dest_addr;
 
     // Load local bind port from NVS
-    int32_t local_port = nvs_load_int("OSC", "Local_Port", 3333);
+    const int32_t local_port = nvs_load_int("OSC", "Local_Port", 3333);
 
     // Load remote IP + port from NVS (used for sending)
     char *remote_ip = nvs_load_str("OSC", "Remote_IP", "0.0.0.0");
-    int32_t remote_port = nvs_load_int("OSC", "Remote_Port", 10000);
+    const int32_t remote_port = nvs_load_int("OSC", "Remote_Port", 10000);
 
     // Build last_client_addr from NVS values (IPv4 only)
     struct sockaddr_in client_addr;
