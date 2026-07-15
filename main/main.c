@@ -46,6 +46,11 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
+#include <ctype.h>
+#include <string.h>
+#include <stdlib.h>
+#include "esp_log.h"
+
 #include "NVS_Helper_Funcs.h"
 
 #define PINCOUNT 28
@@ -405,7 +410,7 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
     char query[256];
     char value[64];
 
-    size_t qlen = httpd_req_get_url_query_len(req);
+    const size_t qlen = httpd_req_get_url_query_len(req);
     if (qlen == 0 || qlen >= sizeof(query))
     {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing query");
@@ -424,7 +429,7 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
     if (httpd_query_key_value(query, "OSC-Remote-Port", value, sizeof(value)) != ESP_OK)
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing OSC-Remote-Port");
 
-    int remote_port = atoi(value);
+    const int remote_port = atoi(value);
 
     // --- Local IP ---
     if (httpd_query_key_value(query, "OSC-Local", value, sizeof(value)) != ESP_OK)
@@ -437,7 +442,7 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
     if (httpd_query_key_value(query, "OSC-Local-Port", value, sizeof(value)) != ESP_OK)
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing OSC-Local-Port");
 
-    int local_port = atoi(value);
+    const int local_port = atoi(value);
 
     // --- Save to NVS ---
     ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", remote_ip));
@@ -463,7 +468,7 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
     }
 
     char body[1024];
-    int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
 
     if (received <= 0)
     {
@@ -539,8 +544,8 @@ static esp_err_t gpio_json_handler(httpd_req_t *req)
         snprintf(key_io, sizeof(key_io), "Pin-%d-IO", i);
 
         // Load values
-        int mode = nvs_load_int("Pins", key_mode, 0);
-        int io = nvs_load_int("Pins", key_io, 0);
+        const int mode = nvs_load_int("Pins", key_mode, 0);
+        const int io = nvs_load_int("Pins", key_io, 0);
 
         // Append JSON entry
         offset += snprintf(json + offset, sizeof(json) - offset,
@@ -564,7 +569,7 @@ static esp_err_t network_json_handler(httpd_req_t *req)
     int offset = 0;
 
     // Load mode
-    int mode = nvs_load_int("Config", "Network", AP);
+    const int mode = nvs_load_int("Config", "Network", AP);
 
     // Load AP settings
     char *ap_ssid = nvs_load_str("AP", "SSID", "");
@@ -611,8 +616,8 @@ static esp_err_t osc_json_handler(httpd_req_t *req)
     // char *local_ip  = nvs_load_str("OSC", "Local_IP",  "0.0.0.0");
     char *local_ip = getCurrentIP();
 
-    int remote_port = nvs_load_int("OSC", "Remote_Port", 9000);
-    int local_port = nvs_load_int("OSC", "Local_Port", 8000);
+    const int remote_port = nvs_load_int("OSC", "Remote_Port", 9000);
+    const int local_port = nvs_load_int("OSC", "Local_Port", 8000);
 
     // Build JSON
     offset += snprintf(json + offset, sizeof(json) - offset,
@@ -641,13 +646,15 @@ static const httpd_uri_t base_uri = {
     .uri = "/",
     .method = HTTP_GET,
     .handler = base_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL,
+};
 
 static const httpd_uri_t reset_uri = {
     .uri = "/reset",
     .method = HTTP_GET,
     .handler = Conf_Reset,
-    .user_ctx = NULL};
+    .user_ctx = NULL,
+};
 
 static const httpd_uri_t network_uri = {
     .uri = "/network",
@@ -662,6 +669,7 @@ static const httpd_uri_t OSC_uri = {
     .handler = OSC_Handler,
     .user_ctx = NULL,
 };
+
 static const httpd_uri_t GPIO_uri = {
     .uri = "/GPIO",
     .method = HTTP_POST,
@@ -673,19 +681,22 @@ static const httpd_uri_t gpio_json_uri = {
     .uri = "/gpio.json",
     .method = HTTP_GET,
     .handler = gpio_json_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL,
+};
 
 static const httpd_uri_t osc_json_uri = {
     .uri = "/osc.json",
     .method = HTTP_GET,
     .handler = osc_json_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL,
+};
 
 static const httpd_uri_t network_json_uri = {
     .uri = "/network.json",
     .method = HTTP_GET,
     .handler = network_json_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL,
+};
 
 // Defines the Full Http server
 httpd_handle_t start_webserver()
@@ -759,11 +770,6 @@ char *getCurrentIP()
 }
 
 // OSC message server
-
-#include <ctype.h>
-#include <string.h>
-#include <stdlib.h>
-#include "esp_log.h"
 
 // Helper: parse channel and validate numeric suffix
 static int parseChannelValidated(const char *addr, const char *prefix, const int min_ch, const int max_ch)
