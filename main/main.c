@@ -1050,11 +1050,6 @@ void sendPingMessage()
     sendOscContents(&oscMessage);
 }
 
-void oscDigitalSend(int pinval, int pinnum) {
-};
-
-void oscAnalogueSend(float pinval, int pinnum);
-
 // Pin reads
 adc_oneshot_unit_handle_t adc_handle;
 
