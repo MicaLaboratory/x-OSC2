@@ -1212,7 +1212,7 @@ void app_main(void)
     flashLedRed();
     flashLedRed();
 
-    int AP_MODE = nvs_load_int("Config", "Network", -1);
+    const int AP_MODE = nvs_load_int("Config", "Network", -1);
     if (AP_MODE < AP || AP_MODE >= AP_MODE_END)
     {
         init_default_Config();
@@ -1234,7 +1234,7 @@ void app_main(void)
         sta = esp_netif_create_default_wifi_sta();
     }
 
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    const wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
     if (AP_MODE == AP)
