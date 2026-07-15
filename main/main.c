@@ -735,17 +735,18 @@ char *getCurrentIP()
     static char ip_str[16];
     esp_netif_ip_info_t ip_info;
 
-    int AP_MODE = nvs_load_int("Config", "Network", -1);
+    const int AP_MODE = nvs_load_int("Config", "Network", -1);
 
     esp_netif_t *netif = NULL;
 
-    if (AP_MODE == STA)
+    switch (AP_MODE)
     {
+    case STA:
         netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    }
-    else if (AP_MODE == AP)
-    {
+        break;
+    case AP:
         netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+        break;
     }
 
     if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK)
@@ -757,7 +758,6 @@ char *getCurrentIP()
     return "0.0.0.0";
 }
 
-void sendPingMessage();
 // OSC message server
 
 #include <ctype.h>
@@ -766,7 +766,7 @@ void sendPingMessage();
 #include "esp_log.h"
 
 // Helper: parse channel and validate numeric suffix
-static int parseChannelValidated(const char *addr, const char *prefix, int min_ch, int max_ch)
+static int parseChannelValidated(const char *addr, const char *prefix, const int min_ch, const int max_ch)
 {
     const char *p = addr + strlen(prefix);
     if (!p || *p == '\0')
@@ -791,8 +791,7 @@ static int parseChannelValidated(const char *addr, const char *prefix, int min_c
     return ch;
 }
 
-void ProcessMessage(const OscTimeTag *const oscTimeTag,
-                    OscMessage *const oscMessage)
+void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
     if (addr == NULL)
@@ -851,8 +850,6 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag,
 static int sock = -1;
 static struct sockaddr_storage last_client_addr;
 static socklen_t last_client_len = 0;
-
-void sendPingMessage();
 
 static void udp_server_task(void *pvParameters)
 {
@@ -1309,11 +1306,10 @@ void app_main(void)
     adc_init();
 
     xTaskCreate(
-        gpio_task,   
-        "GPIO Task", 
-        8192,        
-        NULL,        
-        5,           
-        NULL         
-    );
+        gpio_task,
+        "GPIO Task",
+        8192,
+        NULL,
+        5,
+        NULL);
 }
