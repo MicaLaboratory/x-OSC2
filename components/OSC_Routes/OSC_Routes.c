@@ -175,7 +175,7 @@ void handleDigitalUp(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Enable pull-up ch=%d", channel);
 
-    int gpio = channel;
+    const int gpio = channel;
     // Extract integer argument
     int32_t level;
     OscError err = OscMessageGetArgumentAsInt32(msg, &level);
@@ -211,7 +211,7 @@ void handleDigitalDown(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Enable pull-down ch=%d", channel);
 
-    int gpio = channel;
+    const int gpio = channel;
     // Extract integer argument
     int32_t level;
     OscError err = OscMessageGetArgumentAsInt32(msg, &level);
@@ -274,7 +274,7 @@ void handleOutputModeSerial(OscMessage *msg, int channel)
 void handleDigitalOutput(OscMessage *msg, int channel)
 {
     ESP_LOGI("OSC", "Digital output ch=%d", channel);
-    int gpio = channel;
+    const int gpio = channel;
     // Extract integer argument
     int32_t level;
     OscError err = OscMessageGetArgumentAsInt32(msg, &level);
