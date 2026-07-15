@@ -1063,7 +1063,7 @@ void adc_init(void)
     for (int i = 2; i < 6 + 1; i++)
     {
 
-        int channel = i - 1;
+        const int channel = i - 1;
 
         adc_oneshot_chan_cfg_t chan_cfg = {
             .atten = ADC_ATTEN_DB_12,
@@ -1074,7 +1074,7 @@ void adc_init(void)
     }
 }
 
-int readDigitalPin(int pin)
+int readDigitalPin(const int pin)
 {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << pin),
@@ -1088,9 +1088,9 @@ int readDigitalPin(int pin)
     return gpio_get_level(pin);
 }
 
-float readAnaloguePin(int pin)
+float readAnaloguePin(const int pin)
 {
-    int channel = pin - 1;
+    const int channel = pin - 1;
 
     int raw = 0;
     ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, channel, &raw));
@@ -1165,7 +1165,7 @@ void send_analogue_inputs(void)
         char key_mode[32];
         snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
 
-        int mode = nvs_load_int("Pins", key_mode, 0);
+        const int mode = nvs_load_int("Pins", key_mode, 0);
 
         if (mode == ANALOGUE)
         {
