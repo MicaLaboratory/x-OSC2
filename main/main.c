@@ -61,7 +61,6 @@ typedef enum
     AP_MODE_END
 } AP_Mode;
 
-
 #define PINCOUNT 28
 #define MAX_ATTEMPS 10
 
@@ -754,11 +753,11 @@ char *getCurrentIP()
     static char ip_str[16];
     esp_netif_ip_info_t ip_info;
 
-    const int AP_MODE = nvs_load_int("Config", "Network", -1);
+    const int NETWORK_MODE = nvs_load_int("Config", "Network", -1);
 
     esp_netif_t *netif = NULL;
 
-    switch (AP_MODE)
+    switch (NETWORK_MODE)
     {
     case STA:
         netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
@@ -1207,7 +1206,7 @@ void gpio_task(void *pv)
 
 void app_main(void)
 {
-    // NVS init (unchanged)
+    // Initialise Non-Volatile Storage
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
@@ -1216,11 +1215,13 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
+    // Test OSC fail blink - (first call initalises the strip)
     flashLedRed();
     flashLedRed();
 
-    const int AP_MODE = nvs_load_int("Config", "Network", -1);
-    if (AP_MODE < AP || AP_MODE >= AP_MODE_END)
+    // Loads the Current Network Mode
+    const int NETWORK_MODE = nvs_load_int("Config", "Network", -1);
+    if (NETWORK_MODE < AP || NETWORK_MODE >= AP_MODE_END)
     {
         init_default_Config();
         esp_restart();
@@ -1232,34 +1233,26 @@ void app_main(void)
     esp_netif_t *ap = NULL;
     esp_netif_t *sta = NULL;
 
-    if (AP_MODE == AP)
+    // Has to be initalised on a switch case due to esp_netif_create_default_wifi_(mode) starting its own threat that can cause problems
+    if (NETWORK_MODE == AP)
     {
         ap = esp_netif_create_default_wifi_ap();
     }
     else
-    { // STA
+    {
         sta = esp_netif_create_default_wifi_sta();
     }
 
     const wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    // Register handlers (STA-related)
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        WIFI_EVENT,
-        ESP_EVENT_ANY_ID,
-        &wifi_event_handler,
-        NULL,
-        NULL));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        IP_EVENT,
-        IP_EVENT_STA_GOT_IP,
-        &wifi_event_handler,
-        NULL,
-        NULL));
+    // Register handlers (Network-related)
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
 
-    if (AP_MODE == AP)
+    switch (NETWORK_MODE)
     {
+    case AP:
         // --- AP ONLY PATH ---
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
         ESP_LOGI(TAG_AP, "ESP_WIFI_MODE_AP");
@@ -1272,9 +1265,8 @@ void app_main(void)
         // Start HTTP server directly
         httpd_handle_t server = start_webserver();
         (void)server;
-    }
-    else
-    {
+        break;
+    case STA:
         // --- STA PATH ---
         // Create event group only for STA
         s_wifi_event_group = xEventGroupCreate();
@@ -1285,24 +1277,15 @@ void app_main(void)
         wifi_init_sta();
         ESP_ERROR_CHECK(esp_wifi_start());
 
-        EventBits_t bits = xEventGroupWaitBits(
-            s_wifi_event_group,
-            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-            pdFALSE,
-            pdFALSE,
-            portMAX_DELAY);
+        EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
 
         if (bits & WIFI_CONNECTED_BIT)
         {
-            ESP_LOGI(TAG_STA, "connected to ap SSID:%s password:%s",
-                     CONFIG_ESP_WIFI_REMOTE_AP_SSID, CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
-            // If you ever run AP+STA, only then call:
-            // softap_set_dns_addr(ap, sta);
+            ESP_LOGI(TAG_STA, "connected to ap SSID:%s password:%s", CONFIG_ESP_WIFI_REMOTE_AP_SSID, CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
         }
         else if (bits & WIFI_FAIL_BIT)
         {
-            ESP_LOGE(TAG_STA, "Failed to connect to SSID:%s, password:%s",
-                     CONFIG_ESP_WIFI_REMOTE_AP_SSID, CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
+            ESP_LOGE(TAG_STA, "Failed to connect to SSID:%s, password:%s", CONFIG_ESP_WIFI_REMOTE_AP_SSID, CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
             ESP_ERROR_CHECK(nvs_save_int("Config", "Network", AP));
             esp_restart();
         }
@@ -1314,17 +1297,15 @@ void app_main(void)
         // Optionally start HTTP server here if you want it in STA mode too
         httpd_handle_t server = start_webserver();
         (void)server;
+        break;
     }
 
+    // Spawns the UDP recive Server that handles all Remote -> x-osc2 messages
     xTaskCreate(udp_server_task, "udp_server", 12288, (void *)AF_INET, 5, NULL);
 
+    // Allows for analogue pin reads
     adc_init();
 
-    xTaskCreate(
-        gpio_task,
-        "GPIO Task",
-        8192,
-        NULL,
-        5,
-        NULL);
+    // Spawns a task that sends the Current Configured Gpio
+    xTaskCreate(gpio_task, "GPIO Task", 8192, NULL, 5, NULL);
 }
