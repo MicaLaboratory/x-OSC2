@@ -1262,9 +1262,7 @@ void app_main(void)
         // No event group wait here
         (void)ap; // if unused for now
 
-        // Start HTTP server directly
-        httpd_handle_t server = start_webserver();
-        (void)server;
+        
         break;
     case STA:
         // --- STA PATH ---
@@ -1293,12 +1291,12 @@ void app_main(void)
         {
             ESP_LOGE(TAG_STA, "UNEXPECTED EVENT");
         }
-
-        // Optionally start HTTP server here if you want it in STA mode too
-        httpd_handle_t server = start_webserver();
-        (void)server;
         break;
     }
+
+    // Start HTTP server directly
+        httpd_handle_t server = start_webserver();
+        (void)server;
 
     // Spawns the UDP recive Server that handles all Remote -> x-osc2 messages
     xTaskCreate(udp_server_task, "udp_server", 12288, (void *)AF_INET, 5, NULL);
