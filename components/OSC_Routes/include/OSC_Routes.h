@@ -11,7 +11,7 @@
 typedef struct {
     const char *prefix;
     bool has_channel;
-    void (*handler)(OscMessage *msg, int channel);
+    void (*handler)(OscMessage *msg, const int channel);
 } OscRoute;
 
 static inline int parseChannel(const char *addr, const char *prefix)
@@ -22,54 +22,54 @@ static inline int parseChannel(const char *addr, const char *prefix)
 extern void sendPingMessage();
 extern void send_analogue_inputs();
 
-void handlePrintPinConfig(OscMessage *msg, int channel);
+void handlePrintPinConfig(OscMessage *msg, const int channel);
 
-void handlePing(OscMessage *msg, int channel);
-void handleRemoteIp(OscMessage *msg, int channel);
-void handleRemotePort(OscMessage *msg, int channel);
-void handleLocalPort(OscMessage *msg, int channel);
-void handleBundles(OscMessage *msg, int channel);
-void handlePrefixEnabled(OscMessage *msg, int channel);
-void handlePrefixAddress(OscMessage *msg, int channel);
+void handlePing(OscMessage *msg, const int channel);
+void handleRemoteIp(OscMessage *msg, const int channel);
+void handleRemotePort(OscMessage *msg, const int channel);
+void handleLocalPort(OscMessage *msg, const int channel);
+void handleBundles(OscMessage *msg, const int channel);
+void handlePrefixEnabled(OscMessage *msg, const int channel);
+void handlePrefixAddress(OscMessage *msg, const int channel);
 
-void handleInputModeAnalogue(OscMessage *msg, int channel);
-void handleInputModeDigital(OscMessage *msg, int channel);
-void handleInputModeSerial(OscMessage *msg, int channel);
+void handleInputModeAnalogue(OscMessage *msg, const int channel);
+void handleInputModeDigital(OscMessage *msg, const int channel);
+void handleInputModeSerial(OscMessage *msg, const int channel);
 
-void handleAnalogueRead(OscMessage *msg, int channel);
-void handleAnalogueRate(OscMessage *msg, int channel);
-void handleAnalogueComparatorRead(OscMessage *msg, int channel);
-void handleAnalogueComparatorThreshold(OscMessage *msg, int channel);
+void handleAnalogueRead(OscMessage *msg, const int channel);
+void handleAnalogueRate(OscMessage *msg, const int channel);
+void handleAnalogueComparatorRead(OscMessage *msg, const int channel);
+void handleAnalogueComparatorThreshold(OscMessage *msg, const int channel);
 
-void handleDigitalRead(OscMessage *msg, int channel);
-void handleDigitalUp(OscMessage *msg, int channel);
-void handleDigitalDown(OscMessage *msg, int channel);
+void handleDigitalRead(OscMessage *msg, const int channel);
+void handleDigitalUp(OscMessage *msg, const int channel);
+void handleDigitalDown(OscMessage *msg, const int channel);
 
-void handleOutputModeDigital(OscMessage *msg, int channel);
-void handleOutputModePulse(OscMessage *msg, int channel);
-void handleOutputModePwm(OscMessage *msg, int channel);
-void handleOutputModeSerial(OscMessage *msg, int channel);
+void handleOutputModeDigital(OscMessage *msg, const int channel);
+void handleOutputModePulse(OscMessage *msg, const int channel);
+void handleOutputModePwm(OscMessage *msg, const int channel);
+void handleOutputModeSerial(OscMessage *msg, const int channel);
 
-void handleDigitalOutput(OscMessage *msg, int channel);
-void handleDigitalPattern(OscMessage *msg, int channel);
+void handleDigitalOutput(OscMessage *msg, const int channel);
+void handleDigitalPattern(OscMessage *msg, const int channel);
 
-void handlePulse(OscMessage *msg, int channel);
-void handlePulseWidth(OscMessage *msg, int channel);
-void handlePulseInvert(OscMessage *msg, int channel);
+void handlePulse(OscMessage *msg, const int channel);
+void handlePulseWidth(OscMessage *msg, const int channel);
+void handlePulseInvert(OscMessage *msg, const int channel);
 
-void handlePwmFrequency(OscMessage *msg, int channel);
-void handlePwmDuty(OscMessage *msg, int channel);
+void handlePwmFrequency(OscMessage *msg, const int channel);
+void handlePwmDuty(OscMessage *msg, const int channel);
 
-void handleRgbOutput(OscMessage *msg, int channel);
-void handleSerialOutput(OscMessage *msg, int channel);
+void handleRgbOutput(OscMessage *msg, const int channel);
+void handleSerialOutput(OscMessage *msg, const int channel);
 
-void handleLedRgb(OscMessage *msg, int channel);
-void handleLedDefault(OscMessage *msg, int channel);
+void handleLedRgb(OscMessage *msg, const int channel);
+void handleLedDefault(OscMessage *msg, const int channel);
 
-void handleSerialBaud(OscMessage *msg, int channel);
-void handleSerialBuffer(OscMessage *msg, int channel);
-void handleSerialTimeout(OscMessage *msg, int channel);
-void handleSerialFraming(OscMessage *msg, int channel);
+void handleSerialBaud(OscMessage *msg, const int channel);
+void handleSerialBuffer(OscMessage *msg, const int channel);
+void handleSerialTimeout(OscMessage *msg, const int channel);
+void handleSerialFraming(OscMessage *msg, const int channel);
 
 void flashLedRed(void);
 

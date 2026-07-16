@@ -1172,7 +1172,7 @@ void send_analogue_inputs(void)
 
     for (int i = 1; i < PINCOUNT + 1; i++)
     {
-
+        // Form NVS Name to Pull the current mode of 
         char key_mode[32];
         snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
 
@@ -1199,7 +1199,7 @@ void gpio_task(void *pv)
 
         send_digital_inputs();  // only sends on change
         send_analogue_inputs(); // sends every cycle
-
+        // Used to send only data on configured rate
         vTaskDelay(pdMS_TO_TICKS(nvs_load_int("GPIO", "Rate", 100)));
     }
 }
