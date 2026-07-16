@@ -61,6 +61,7 @@ typedef enum
     AP_MODE_END
 } AP_Mode;
 
+
 #define PINCOUNT 28
 #define MAX_ATTEMPS 10
 
@@ -505,8 +506,8 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
         if (httpd_query_key_value(body, field_mode, value, sizeof(value)) == ESP_OK)
         {
             int mode = atoi(value);
-            if (mode < 0 || mode > 2)
-                mode = 0;
+            if (mode < GPIO_OFF || mode > GPIO_DIGITAL)
+                mode = GPIO_OFF;
             ESP_ERROR_CHECK(nvs_save_int("Pins", key_mode, mode));
         }
 

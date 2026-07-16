@@ -119,11 +119,51 @@ void handlePrefixAddress(OscMessage *msg, const int channel)
 void handleInputModeAnalogue(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set analogue input mode ch=%d", channel);
+
+    const int gpio = channel;
+    // Extract integer argument
+    int32_t level;
+    OscError err = OscMessageGetArgumentAsInt32(msg, &level);
+    if (err != OscErrorNone)
+    {
+        return;
+    }
+
+    if (level != 0)
+    {
+        char NVS_Name_Buffer;
+        snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
+        ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_ANALOGUE));
+    }
+
+    char NVS_Name_Buffer;
+    snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
+    ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
 }
 
 void handleInputModeDigital(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set digital input mode ch=%d", channel);
+    
+    const int gpio = channel;
+    // Extract integer argument
+    int32_t level;
+    OscError err = OscMessageGetArgumentAsInt32(msg, &level);
+    if (err != OscErrorNone)
+    {
+        return;
+    }
+
+    if (level != 0)
+    {
+        char NVS_Name_Buffer;
+        snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
+        ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_DIGITAL));
+    }
+
+    char NVS_Name_Buffer;
+    snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
+    ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
 }
 
 void handleInputModeSerial(OscMessage *msg, const int channel)
