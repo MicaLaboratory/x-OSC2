@@ -156,14 +156,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED)
     {
         wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *)event_data;
-        ESP_LOGI(TAG_AP, "Station " MACSTR " joined, AID=%d",
-                 MAC2STR(event->mac), event->aid);
+        ESP_LOGI(TAG_AP, "Station " MACSTR " joined, AID=%d", MAC2STR(event->mac), event->aid);
     }
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STADISCONNECTED)
     {
         wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t *)event_data;
-        ESP_LOGI(TAG_AP, "Station " MACSTR " left, AID=%d, reason:%d",
-                 MAC2STR(event->mac), event->aid, event->reason);
+        ESP_LOGI(TAG_AP, "Station " MACSTR " left, AID=%d, reason:%d", MAC2STR(event->mac), event->aid, event->reason);
     }
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
     {
@@ -180,8 +178,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     else if (event_base == IP_EVENT && event_id == IP_EVENT_ASSIGNED_IP_TO_CLIENT)
     {
         const ip_event_assigned_ip_to_client_t *e = (const ip_event_assigned_ip_to_client_t *)event_data;
-        ESP_LOGI(TAG_AP, "Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'",
-                 IP2STR(&e->ip), MAC2STR(e->mac), e->hostname);
+        ESP_LOGI(TAG_AP, "Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'", IP2STR(&e->ip), MAC2STR(e->mac), e->hostname);
     }
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
@@ -1172,7 +1169,7 @@ void send_analogue_inputs(void)
 
     for (int i = 1; i < PINCOUNT + 1; i++)
     {
-        // Form NVS Name to Pull the current mode of 
+        // Form NVS Name to Pull the current mode of
         char key_mode[32];
         snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
 
@@ -1262,7 +1259,6 @@ void app_main(void)
         // No event group wait here
         (void)ap; // if unused for now
 
-        
         break;
     case STA:
         // --- STA PATH ---
@@ -1295,8 +1291,8 @@ void app_main(void)
     }
 
     // Start HTTP server directly
-        httpd_handle_t server = start_webserver();
-        (void)server;
+    httpd_handle_t server = start_webserver();
+    (void)server;
 
     // Spawns the UDP recive Server that handles all Remote -> x-osc2 messages
     xTaskCreate(udp_server_task, "udp_server", 12288, (void *)AF_INET, 5, NULL);

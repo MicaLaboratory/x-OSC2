@@ -78,7 +78,7 @@ void handleRemotePort(OscMessage *msg, const int channel)
 
     ESP_ERROR_CHECK(nvs_save_int("OSC", "Remote_Port", new_port));
 
-    ESP_LOGI("OSC", "Set remote port Successfull");
+    ESP_LOGI("OSC", "Remote port set successfully");
 }
 
 void handleLocalPort(OscMessage *msg, const int channel)
@@ -95,7 +95,7 @@ void handleLocalPort(OscMessage *msg, const int channel)
 
     ESP_ERROR_CHECK(nvs_save_int("OSC", "Local_Port", new_port));
 
-    ESP_LOGI("OSC", "Set remote port Successfull");
+    ESP_LOGI("OSC", "Local port set successfully");
     // To push port change
     esp_restart();
 }
