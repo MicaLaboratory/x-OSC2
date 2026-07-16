@@ -129,14 +129,14 @@ void handleInputModeAnalogue(OscMessage *msg, const int channel)
         return;
     }
 
+    char NVS_Name_Buffer[64];
+
     if (level != 0)
     {
-        char NVS_Name_Buffer;
         snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
         ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_ANALOGUE));
     }
 
-    char NVS_Name_Buffer;
     snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
     ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
 }
@@ -154,14 +154,14 @@ void handleInputModeDigital(OscMessage *msg, const int channel)
         return;
     }
 
+    char NVS_Name_Buffer[64];
+
     if (level != 0)
     {
-        char NVS_Name_Buffer;
         snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
         ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_DIGITAL));
     }
 
-    char NVS_Name_Buffer;
     snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
     ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
 }
