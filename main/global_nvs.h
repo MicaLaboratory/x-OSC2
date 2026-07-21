@@ -1,9 +1,9 @@
 #ifndef GLOBAL_NVS_IMPL_H
 #define GLOBAL_NVS_IMPL_H
 
-
 #include "NVS_Helper_Funcs.h"
 #include <stdbool.h>
+#include "esp_err.h"
 // #include <
 // #include <cstddef>
 // #include <cstring>
@@ -87,11 +87,10 @@ static const FieldDesc g_fields[] = {
     /* -------------------------------
        Network Settings
        ------------------------------- */
-    {
-        "net_settings.network_mode",
-        offsetof(NVS_Global, net_settings.network_mode),
-        sizeof(((NVS_Global *)0)->net_settings.network_mode),
-        FIELD_ENUM},
+    {"net_settings.network_mode",
+     offsetof(NVS_Global, net_settings.network_mode),
+     sizeof(((NVS_Global *)0)->net_settings.network_mode),
+     FIELD_ENUM},
     {"net_settings.ap_ssid",
      offsetof(NVS_Global, net_settings.ap_ssid),
      sizeof(((NVS_Global *)0)->net_settings.ap_ssid),
@@ -140,16 +139,13 @@ static const FieldDesc g_fields[] = {
     /* -------------------------------
        GPIO Settings
        ------------------------------- */
-    {
-        "gpio_settings.gpio_rate",
-        offsetof(NVS_Global, gpio_settings.gpio_rate),
-        sizeof(((NVS_Global *)0)->gpio_settings.gpio_rate),
-        FIELD_U32},
+    {"gpio_settings.gpio_rate",
+     offsetof(NVS_Global, gpio_settings.gpio_rate),
+     sizeof(((NVS_Global *)0)->gpio_settings.gpio_rate),
+     FIELD_U32},
 };
 
-static inline bool nvs_update(NVS_Global *nvs,
-                              const char *field_name,
-                              const void *value)
+static inline bool nvs_update(NVS_Global *nvs, const char *field_name, const void *value)
 {
     for (size_t i = 0; i < sizeof(g_fields) / sizeof(g_fields[0]); i++)
     {
@@ -163,22 +159,27 @@ static inline bool nvs_update(NVS_Global *nvs,
         switch (fd->type)
         {
         case FIELD_U32:
+            ESP_ERROR_CHECK(nvs_save_value("GLOBAL",field_name,NVS_TYPE_U32,value));
             *(uint32_t *)target = *(const uint32_t *)value;
             return true;
 
         case FIELD_U16:
+            ESP_ERROR_CHECK(nvs_save_value("GLOBAL",field_name,NVS_TYPE_U32,value));
             *(uint16_t *)target = *(const uint16_t *)value;
             return true;
 
         case FIELD_BOOL:
+            ESP_ERROR_CHECK(nvs_save_value("GLOBAL",field_name,NVS_TYPE_U8,value));
             *(bool *)target = *(const bool *)value;
             return true;
 
         case FIELD_ENUM:
+            ESP_ERROR_CHECK(nvs_save_value("GLOBAL",field_name,NVS_TYPE_I8,value));
             *(uint32_t *)target = *(const uint32_t *)value;
             return true;
 
         case FIELD_STR:
+            ESP_ERROR_CHECK(nvs_save_value("GLOBAL",field_name,NVS_TYPE_STR,value));
             *(const char **)target = (const char *)value;
             return true;
         }
