@@ -41,7 +41,7 @@ void flashLedRed(void)
 }
 
 /**************  GENERAL / PING  **************/
-void handlePing(OscMessage *msg, int channel)
+void handlePing(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Ping received");
     sendPingMessage();
@@ -49,7 +49,7 @@ void handlePing(OscMessage *msg, int channel)
 }
 
 /**************  OSC NETWORK CONFIG  **************/
-void handleRemoteIp(OscMessage *msg, int channel)
+void handleRemoteIp(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set remote IP");
     char new_ip[64];
@@ -65,7 +65,7 @@ void handleRemoteIp(OscMessage *msg, int channel)
     ESP_LOGI("OSC", "Set remote IP Successfull");
 }
 
-void handleRemotePort(OscMessage *msg, int channel)
+void handleRemotePort(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set remote port");
     int32_t new_port;
@@ -78,10 +78,10 @@ void handleRemotePort(OscMessage *msg, int channel)
 
     ESP_ERROR_CHECK(nvs_save_int("OSC", "Remote_Port", new_port));
 
-    ESP_LOGI("OSC", "Set remote port Successfull");
+    ESP_LOGI("OSC", "Remote port set successfully");
 }
 
-void handleLocalPort(OscMessage *msg, int channel)
+void handleLocalPort(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set local port");
 
@@ -95,51 +95,91 @@ void handleLocalPort(OscMessage *msg, int channel)
 
     ESP_ERROR_CHECK(nvs_save_int("OSC", "Local_Port", new_port));
 
-    ESP_LOGI("OSC", "Set remote port Successfull");
+    ESP_LOGI("OSC", "Local port set successfully");
     // To push port change
     esp_restart();
 }
 
-void handleBundles(OscMessage *msg, int channel)
+void handleBundles(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set bundle mode");
 }
 
-void handlePrefixEnabled(OscMessage *msg, int channel)
+void handlePrefixEnabled(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set prefix enabled");
 }
 
-void handlePrefixAddress(OscMessage *msg, int channel)
+void handlePrefixAddress(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set prefix address");
 }
 
 /**************  INPUT MODES  **************/
-void handleInputModeAnalogue(OscMessage *msg, int channel)
+void handleInputModeAnalogue(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set analogue input mode ch=%d", channel);
+
+    const int gpio = channel;
+    // Extract integer argument
+    int32_t level;
+    OscError err = OscMessageGetArgumentAsInt32(msg, &level);
+    if (err != OscErrorNone)
+    {
+        return;
+    }
+
+    char NVS_Name_Buffer[64];
+
+    if (level != 0)
+    {
+        snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
+        ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_ANALOGUE));
+    }
+
+    snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
+    ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
 }
 
-void handleInputModeDigital(OscMessage *msg, int channel)
+void handleInputModeDigital(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set digital input mode ch=%d", channel);
+    
+    const int gpio = channel;
+    // Extract integer argument
+    int32_t level;
+    OscError err = OscMessageGetArgumentAsInt32(msg, &level);
+    if (err != OscErrorNone)
+    {
+        return;
+    }
+
+    char NVS_Name_Buffer[64];
+
+    if (level != 0)
+    {
+        snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
+        ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_DIGITAL));
+    }
+
+    snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
+    ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
 }
 
-void handleInputModeSerial(OscMessage *msg, int channel)
+void handleInputModeSerial(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set serial input mode ch=%d", channel);
 }
 
 /**************  ANALOGUE INPUTS  **************/
-void handleAnalogueRead(OscMessage *msg, int channel)
+void handleAnalogueRead(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Analogue read request");
 
     send_analogue_inputs();
 }
 
-void handleAnalogueRate(OscMessage *msg, int channel)
+void handleAnalogueRate(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set analogue rate");
 
@@ -155,23 +195,23 @@ void handleAnalogueRate(OscMessage *msg, int channel)
     ESP_ERROR_CHECK(nvs_save_int("GPIO", "Rate", New_Rate));
 }
 
-void handleAnalogueComparatorRead(OscMessage *msg, int channel)
+void handleAnalogueComparatorRead(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Analogue comparator read");
 }
 
-void handleAnalogueComparatorThreshold(OscMessage *msg, int channel)
+void handleAnalogueComparatorThreshold(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set analogue comparator threshold ch=%d", channel);
 }
 
 /**************  DIGITAL INPUTS  **************/
-void handleDigitalRead(OscMessage *msg, int channel)
+void handleDigitalRead(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Digital read request");
 }
 
-void handleDigitalUp(OscMessage *msg, int channel)
+void handleDigitalUp(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Enable pull-up ch=%d", channel);
 
@@ -207,7 +247,7 @@ void handleDigitalUp(OscMessage *msg, int channel)
     gpio_config(&cfg);
 }
 
-void handleDigitalDown(OscMessage *msg, int channel)
+void handleDigitalDown(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Enable pull-down ch=%d", channel);
 
@@ -244,34 +284,34 @@ void handleDigitalDown(OscMessage *msg, int channel)
     gpio_config(&cfg);
 }
 
-void handlePrintPinConfig(OscMessage *msg, int channel)
+void handlePrintPinConfig(OscMessage *msg, const int channel)
 {
     gpio_dump_io_configuration(stdout, SOC_GPIO_VALID_GPIO_MASK);
 }
 
 /**************  OUTPUT MODES  **************/
-void handleOutputModeDigital(OscMessage *msg, int channel)
+void handleOutputModeDigital(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set output digital mode ch=%d", channel);
 }
 
-void handleOutputModePulse(OscMessage *msg, int channel)
+void handleOutputModePulse(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set output pulse mode ch=%d", channel);
 }
 
-void handleOutputModePwm(OscMessage *msg, int channel)
+void handleOutputModePwm(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set output PWM mode ch=%d", channel);
 }
 
-void handleOutputModeSerial(OscMessage *msg, int channel)
+void handleOutputModeSerial(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Set output serial mode ch=%d", channel);
 }
 
 /**************  DIGITAL OUTPUTS  **************/
-void handleDigitalOutput(OscMessage *msg, int channel)
+void handleDigitalOutput(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Digital output ch=%d", channel);
     const int gpio = channel;
@@ -294,78 +334,78 @@ void handleDigitalOutput(OscMessage *msg, int channel)
     gpio_set_level(gpio, level ? 1 : 0);
 }
 
-void handleDigitalPattern(OscMessage *msg, int channel)
+void handleDigitalPattern(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Digital pattern");
 }
 
 /**************  PULSE OUTPUTS  **************/
-void handlePulse(OscMessage *msg, int channel)
+void handlePulse(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Pulse ch=%d", channel);
 }
 
-void handlePulseWidth(OscMessage *msg, int channel)
+void handlePulseWidth(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Pulse width ch=%d", channel);
 }
 
-void handlePulseInvert(OscMessage *msg, int channel)
+void handlePulseInvert(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Pulse invert ch=%d", channel);
 }
 
 /**************  PWM OUTPUTS  **************/
-void handlePwmFrequency(OscMessage *msg, int channel)
+void handlePwmFrequency(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "PWM frequency ch=%d", channel);
 }
 
-void handlePwmDuty(OscMessage *msg, int channel)
+void handlePwmDuty(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "PWM duty ch=%d", channel);
 }
 
 /**************  RGB OUTPUTS  **************/
-void handleRgbOutput(OscMessage *msg, int channel)
+void handleRgbOutput(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "RGB output ch=%d", channel);
 }
 
 /**************  SERIAL OUTPUTS  **************/
-void handleSerialOutput(OscMessage *msg, int channel)
+void handleSerialOutput(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Serial output ch=%d", channel);
 }
 
 /**************  LED CONTROL  **************/
-void handleLedRgb(OscMessage *msg, int channel)
+void handleLedRgb(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "LED RGB");
 }
 
-void handleLedDefault(OscMessage *msg, int channel)
+void handleLedDefault(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "LED default");
 }
 
 /**************  SERIAL CONFIG  **************/
-void handleSerialBaud(OscMessage *msg, int channel)
+void handleSerialBaud(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Serial baud ch=%d", channel);
 }
 
-void handleSerialBuffer(OscMessage *msg, int channel)
+void handleSerialBuffer(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Serial buffer ch=%d", channel);
 }
 
-void handleSerialTimeout(OscMessage *msg, int channel)
+void handleSerialTimeout(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Serial timeout ch=%d", channel);
 }
 
-void handleSerialFraming(OscMessage *msg, int channel)
+void handleSerialFraming(OscMessage *msg, const int channel)
 {
     ESP_LOGI("OSC", "Serial framing ch=%d", channel);
 }
