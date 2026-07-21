@@ -52,14 +52,15 @@
 
 #include "esp_log.h"
 
+#include "global_nvs.h"
 #include "NVS_Helper_Funcs.h"
 
-typedef enum
-{
-    AP = 1,
-    STA,
-    AP_MODE_END
-} AP_Mode;
+// typedef enum
+// {
+//     AP = 1,
+//     STA,
+//     AP_MODE_END
+// } AP_Mode;
 
 
 #define PINCOUNT 28
