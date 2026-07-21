@@ -1,14 +1,14 @@
 #include <stdio.h>
 #include <inttypes.h> // for PRId32
 #include "NVS_Helper_Funcs.h"
-#include "nvs.h"
+
 #include "esp_log.h"
 
 #include "../../main/global_nvs.h"
 
 // Saving INT
 
-esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_value_type_t type, const void *value)
+esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_type_t type, const void *value)
 {
     nvs_handle_t handle;
     esp_err_t err = nvs_open(namespace_name, NVS_READWRITE, &handle);

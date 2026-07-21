@@ -7,6 +7,7 @@
 #include "OscPacket.h"
 #include "OscSlip.h"
 #include "Osc99.h"
+#include "../../main/global_nvs.h"
 
 
 typedef struct {
@@ -15,11 +16,11 @@ typedef struct {
     void (*handler)(OscMessage *msg, const int channel);
 } OscRoute;
 
-typedef enum {
-    GPIO_OFF,
-    GPIO_ANALOGUE,
-    GPIO_DIGITAL
-}GPIO_CONV;
+// typedef enum {
+//     GPIO_OFF,
+//     GPIO_ANALOGUE,
+//     GPIO_DIGITAL
+// }GPIO_CONV;
 static inline int parseChannel(const char *addr, const char *prefix)
 {
     return atoi(addr + strlen(prefix));

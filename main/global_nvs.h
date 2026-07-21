@@ -65,14 +65,6 @@ typedef struct
     GPIO_Settings_t gpio_settings;
 } NVS_Global;
 
-typedef enum
-{
-    FIELD_U32,
-    FIELD_U16,
-    FIELD_BOOL,
-    FIELD_ENUM,
-    FIELD_STR
-} FieldType;
 
 typedef struct
 {
@@ -203,7 +195,7 @@ static inline bool nvs_populate_value(NVS_Global *nvs, const char *field_name, c
         uint8_t buffer[64]; // enough for u32/u16/bool/enum/str pointer
         const void *loaded = buffer;
 
-        esp_err_t err = nvs_load_value("Global", field_name, default_value, fd->type, loaded);
+        esp_err_t err = nvs_load_value("Global", field_name, fd->type,default_value, &loaded);
 
         // If load failed, use default_value
         const void *src = (err == ESP_OK) ? loaded : default_value;
@@ -242,7 +234,7 @@ static inline const void *get_default_value(const NVS_Global *defaults,
     return (const uint8_t *)defaults + fd->offset;
 }
 
-static inline const bool nvs_populate_all(NVS_Global *nvs, const NVS_Global *defaults)
+static inline bool nvs_populate_all(NVS_Global *nvs, const NVS_Global *defaults)
 {
     bool ok = true;
 
