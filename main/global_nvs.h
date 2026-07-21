@@ -159,27 +159,27 @@ static inline bool nvs_update(NVS_Global *nvs, const char *field_name, const voi
         switch (fd->type)
         {
         case FIELD_U32:
-            ESP_ERROR_CHECK(nvs_save_value("GLOBAL",field_name,NVS_TYPE_U32,value));
+            ESP_ERROR_CHECK(nvs_save_value("GLOBAL", field_name, NVS_TYPE_U32, value));
             *(uint32_t *)target = *(const uint32_t *)value;
             return true;
 
         case FIELD_U16:
-            ESP_ERROR_CHECK(nvs_save_value("GLOBAL",field_name,NVS_TYPE_U32,value));
+            ESP_ERROR_CHECK(nvs_save_value("GLOBAL", field_name, NVS_TYPE_U32, value));
             *(uint16_t *)target = *(const uint16_t *)value;
             return true;
 
         case FIELD_BOOL:
-            ESP_ERROR_CHECK(nvs_save_value("GLOBAL",field_name,NVS_TYPE_U8,value));
+            ESP_ERROR_CHECK(nvs_save_value("GLOBAL", field_name, NVS_TYPE_U8, value));
             *(bool *)target = *(const bool *)value;
             return true;
 
         case FIELD_ENUM:
-            ESP_ERROR_CHECK(nvs_save_value("GLOBAL",field_name,NVS_TYPE_I8,value));
+            ESP_ERROR_CHECK(nvs_save_value("GLOBAL", field_name, NVS_TYPE_I8, value));
             *(uint32_t *)target = *(const uint32_t *)value;
             return true;
 
         case FIELD_STR:
-            ESP_ERROR_CHECK(nvs_save_value("GLOBAL",field_name,NVS_TYPE_STR,value));
+            ESP_ERROR_CHECK(nvs_save_value("GLOBAL", field_name, NVS_TYPE_STR, value));
             *(const char **)target = (const char *)value;
             return true;
         }
@@ -187,5 +187,77 @@ static inline bool nvs_update(NVS_Global *nvs, const char *field_name, const voi
 
     return false; // field not found
 }
+
+static inline bool nvs_populate_value(NVS_Global *nvs, const char *field_name, const void *default_value)
+{
+    for (size_t i = 0; i < sizeof(g_fields) / sizeof(g_fields[0]); i++)
+    {
+        const FieldDesc *fd = &g_fields[i];
+
+        if (strcmp(fd->name, field_name) != 0)
+            continue;
+
+        void *target = (uint8_t *)nvs + fd->offset;
+
+        // Load from NVS
+        uint8_t buffer[64]; // enough for u32/u16/bool/enum/str pointer
+        const void *loaded = buffer;
+
+        esp_err_t err = nvs_load_value("Global", field_name, default_value, fd->type, loaded);
+
+        // If load failed, use default_value
+        const void *src = (err == ESP_OK) ? loaded : default_value;
+
+        switch (fd->type)
+        {
+        case FIELD_U32:
+            *(uint32_t *)target = *(const uint32_t *)src;
+            return true;
+
+        case FIELD_U16:
+            *(uint16_t *)target = *(const uint16_t *)src;
+            return true;
+
+        case FIELD_BOOL:
+            *(bool *)target = *(const bool *)src;
+            return true;
+
+        case FIELD_ENUM:
+            *(uint32_t *)target = *(const uint32_t *)src;
+            return true;
+
+        case FIELD_STR:
+            // For strings, src is a char*
+            *(const char **)target = (const char *)src;
+            return true;
+        }
+    }
+
+    return false; // field not found
+}
+
+static inline const void *get_default_value(const NVS_Global *defaults,
+                                            const FieldDesc *fd)
+{
+    return (const uint8_t *)defaults + fd->offset;
+}
+
+static inline const bool nvs_populate_all(NVS_Global *nvs, const NVS_Global *defaults)
+{
+    bool ok = true;
+
+    for (size_t i = 0; i < sizeof(g_fields) / sizeof(g_fields[0]); i++)
+    {
+        const FieldDesc *fd = &g_fields[i];
+
+        const void *default_value = get_default_value(defaults, fd);
+
+        if (!nvs_populate_value(nvs, fd->name, default_value))
+            ok = false;
+    }
+
+    return ok;
+}
+
 
 #endif

@@ -4,6 +4,8 @@
 #include "nvs.h"
 #include "esp_log.h"
 
+#include "../../main/global_nvs.h"
+
 // Saving INT
 
 esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_value_type_t type, const void *value)
@@ -43,7 +45,7 @@ esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_value_
             err = nvs_set_blob(handle, key, blob->data, blob->size);
         }
         break;
-        
+
     default:
         err = ESP_ERR_INVALID_ARG;
         break;
@@ -58,82 +60,95 @@ esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_value_
     return err;
 }
 
-// Loading INT
-int32_t nvs_load_int(const char *namespace_name, const char *key, int32_t default_value)
+esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType type, const void *default_value, void *out_value)
 {
     nvs_handle_t handle;
     esp_err_t err = nvs_open(namespace_name, NVS_READONLY, &handle);
 
     if (err != ESP_OK)
     {
-        ESP_LOGW("NVS", "Namespace %s not found, using default", namespace_name);
-        return default_value;
+        // Namespace missing → use default
+        memcpy(out_value, default_value, sizeof(uint32_t)); // safe for all non-string types
+        return ESP_ERR_NVS_NOT_FOUND;
     }
 
-    int32_t value = default_value;
-    err = nvs_get_i32(handle, key, &value);
-
-    if (err == ESP_ERR_NVS_NOT_FOUND)
+    switch (type)
     {
-        ESP_LOGW("NVS", "Key %s not found, using default", key);
+    case FIELD_U32:
+    {
+        uint32_t val = *(uint32_t *)default_value;
+        err = nvs_get_u32(handle, key, &val);
+        *(uint32_t *)out_value = val;
+        break;
     }
-    else if (err != ESP_OK)
+
+    case FIELD_U16:
     {
-        ESP_LOGE("NVS", "Error reading %s: %s", key, esp_err_to_name(err));
+        uint16_t val = *(uint16_t *)default_value;
+        err = nvs_get_u16(handle, key, &val);
+        *(uint16_t *)out_value = val;
+        break;
+    }
+
+    case FIELD_BOOL:
+    {
+        bool val = *(bool *)default_value;
+        err = nvs_get_u8(handle, key, (uint8_t *)&val);
+        *(bool *)out_value = val;
+        break;
+    }
+
+    case FIELD_ENUM:
+    {
+        uint32_t val = *(uint32_t *)default_value;
+        err = nvs_get_u32(handle, key, &val);
+        *(uint32_t *)out_value = val;
+        break;
+    }
+
+    case FIELD_STR:
+    {
+        size_t len = 0;
+        err = nvs_get_str(handle, key, NULL, &len);
+
+        if (err == ESP_ERR_NVS_NOT_FOUND)
+        {
+            *(char **)out_value = strdup((const char *)default_value);
+            break;
+        }
+
+        if (err != ESP_OK)
+        {
+            *(char **)out_value = strdup((const char *)default_value);
+            break;
+        }
+
+        char *buf = malloc(len);
+        if (!buf)
+        {
+            *(char **)out_value = strdup((const char *)default_value);
+            break;
+        }
+
+        err = nvs_get_str(handle, key, buf, &len);
+        if (err != ESP_OK)
+        {
+            free(buf);
+            *(char **)out_value = strdup((const char *)default_value);
+            break;
+        }
+
+        *(char **)out_value = buf;
+        break;
+    }
+
+    default:
+        err = ESP_ERR_INVALID_ARG;
+        break;
     }
 
     nvs_close(handle);
-    return value;
-}
-
-// Loading STRING
-char *nvs_load_str(const char *namespace_name, const char *key, const char *default_value)
-{
-    nvs_handle_t handle;
-    esp_err_t err = nvs_open(namespace_name, NVS_READONLY, &handle);
-
-    if (err != ESP_OK)
-    {
-        ESP_LOGW("NVS", "Namespace %s not found, using default", namespace_name);
-        return strdup(default_value);
-    }
-
-    size_t len = 0;
-    err = nvs_get_str(handle, key, NULL, &len);
-
-    if (err == ESP_ERR_NVS_NOT_FOUND)
-    {
-        ESP_LOGW("NVS", "Key %s not found, using default", key);
-        nvs_close(handle);
-        return strdup(default_value);
-    }
-
-    if (err != ESP_OK)
-    {
-        ESP_LOGE("NVS", "Error reading %s: %s", key, esp_err_to_name(err));
-        nvs_close(handle);
-        return strdup(default_value);
-    }
-
-    char *value = malloc(len);
-    if (!value)
-    {
-        ESP_LOGE("NVS", "Out of memory allocating %zu bytes", len);
-        nvs_close(handle);
-        return strdup(default_value);
-    }
-
-    err = nvs_get_str(handle, key, value, &len);
-    if (err != ESP_OK)
-    {
-        ESP_LOGE("NVS", "Error reading %s: %s", key, esp_err_to_name(err));
-        free(value);
-        nvs_close(handle);
-        return strdup(default_value);
-    }
-
-    nvs_close(handle);
-    return value;
+    return err;
 }
 
 // Print all NVS entries

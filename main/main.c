@@ -106,10 +106,38 @@ static const char *TAG_STA = "WiFi Sta";
 
 static int s_retry_num = 0;
 
+// NVS_GLOBAL_INTERMIDARY
+
+static NVS_Global nvs_global;
+
+static const NVS_Global NVS_DEFAULTS = {
+    .net_settings = {
+        .network_mode = 0,
+        .ap_ssid = "MyAP",
+        .ap_password = "password",
+        .sta_ssid = "",
+        .sta_password = "",
+    },
+    .osc_settings = {
+        .remote_ip = "192.168.1.10",
+        .remote_port = 9000,
+        .local_ip = "0.0.0.0",
+        .local_port = 9001,
+        .bundle = false,
+        .address_prefix = false,
+    },
+    .gpio_settings = {
+        .gpio_rate = 1000,
+    }
+};
+
+
 // Helper funcs
 char *getCurrentIP();
 
-// DefaultS
+
+
+// Defaults
 void init_default_Config()
 {
 
@@ -1203,6 +1231,9 @@ void gpio_task(void *pv)
     }
 }
 
+
+
+
 void app_main(void)
 {
     // Initialise Non-Volatile Storage
@@ -1224,6 +1255,12 @@ void app_main(void)
     {
         init_default_Config();
         esp_restart();
+    }
+
+    // Populates Global nvs
+    if (!nvs_populate_all(&nvs_global,&NVS_DEFAULTS));
+    {
+        return;
     }
 
     ESP_ERROR_CHECK(esp_netif_init());
