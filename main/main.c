@@ -810,7 +810,7 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMes
             }
 
             // call handler with validated channel
-            r->handler(oscMessage, channel);
+            r->handler(oscMessage, channel, &nvs_global);
             return;
         }
         else
@@ -818,7 +818,7 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMes
             // exact match for non-channel routes
             if (OscAddressMatch(addr, r->prefix))
             {
-                r->handler(oscMessage, -1);
+                r->handler(oscMessage, -1, &nvs_global);
                 return;
             }
         }
