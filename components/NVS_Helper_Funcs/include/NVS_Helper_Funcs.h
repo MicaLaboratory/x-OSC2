@@ -27,7 +27,8 @@ typedef enum
     FIELD_U16,
     FIELD_BOOL,
     FIELD_ENUM,
-    FIELD_STR
+    FIELD_STR,
+    // FIELD_ARRAY_ENUM
 } FieldType;
 
 

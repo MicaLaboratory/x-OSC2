@@ -62,7 +62,6 @@
 //     AP_MODE_END
 // } AP_Mode;
 
-
 #define PINCOUNT 28
 #define MAX_ATTEMPS 10
 
@@ -128,54 +127,66 @@ static const NVS_Global NVS_DEFAULTS = {
     },
     .gpio_settings = {
         .gpio_rate = 1000,
-    }
-};
-
+    }};
 
 // Helper funcs
 char *getCurrentIP();
 
-
-
 // Defaults
-void init_default_Config()
+void init_default_Config(NVS_Global *nvs)
 {
+    /* -----------------------------------------
+       Network Settings
+       ----------------------------------------- */
 
-    // Set Default Network Settings
-    ESP_ERROR_CHECK(nvs_save_int("Config", "Network", AP));
-    // AP
-    ESP_ERROR_CHECK(nvs_save_str("AP", "SSID", CONFIG_ESP_WIFI_AP_SSID));
-    ESP_ERROR_CHECK(nvs_save_str("AP", "Passphrase", CONFIG_ESP_WIFI_AP_PASSWORD));
-    // STA
-    ESP_ERROR_CHECK(nvs_save_str("STA", "SSID", CONFIG_ESP_WIFI_REMOTE_AP_SSID));
-    ESP_ERROR_CHECK(nvs_save_str("STA", "Passphrase", CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD));
+    AP_Mode mode = AP;
+    nvs_update(nvs, "net_settings.network_mode", &mode);
 
-    // Sets OSC message settings
-    ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", CONFIG_ESP_OSC_REMOTE_IP));
-    ESP_ERROR_CHECK(nvs_save_int("OSC", "Remote_Port", CONFIG_ESP_OSC_REMOTE_PORT));
-    ESP_ERROR_CHECK(nvs_save_str("OSC", "Local_IP", CONFIG_ESP_OSC_LOCAL_IP));
-    ESP_ERROR_CHECK(nvs_save_int("OSC", "Local_Port", CONFIG_ESP_OSC_LOCAL_PORT));
+    nvs_update(nvs, "net_settings.ap_ssid", CONFIG_ESP_WIFI_AP_SSID);
+    nvs_update(nvs, "net_settings.ap_password", CONFIG_ESP_WIFI_AP_PASSWORD);
 
-    ESP_ERROR_CHECK(nvs_save_int("OSC", "Bundles", 0));
-    ESP_ERROR_CHECK(nvs_save_int("OSC", "address_Prefix", 0));
+    nvs_update(nvs, "net_settings.sta_ssid", CONFIG_ESP_WIFI_REMOTE_AP_SSID);
+    nvs_update(nvs, "net_settings.sta_password", CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
+
+    /* -----------------------------------------
+       OSC Settings
+       ----------------------------------------- */
+
+    nvs_update(nvs, "osc_settings.remote_ip", CONFIG_ESP_OSC_REMOTE_IP);
+
+    uint16_t remote_port = CONFIG_ESP_OSC_REMOTE_PORT;
+    nvs_update(nvs, "osc_settings.remote_port", &remote_port);
+
+    nvs_update(nvs, "osc_settings.local_ip", CONFIG_ESP_OSC_LOCAL_IP);
+
+    uint16_t local_port = CONFIG_ESP_OSC_LOCAL_PORT;
+    nvs_update(nvs, "osc_settings.local_port", &local_port);
+
+    bool bundles = false;
+    nvs_update(nvs, "osc_settings.bundle", &bundles);
+
+    bool prefix = false;
+    nvs_update(nvs, "osc_settings.address_prefix", &prefix);
 
     // GPIO defaults
-    ESP_ERROR_CHECK(nvs_save_int("GPIO", "Rate", 100));
-    for (int i = 1; i < PINCOUNT + 1; i++)
-    {
+    uint32_t rate = 100;
+    nvs_update(&nvs_global, "gpio_settings.gpio_rate", &rate);
 
-        char key_mode[32];
-        char key_io[32];
+    // for (int i = 1; i < PINCOUNT + 1; i++)
+    // {
 
-        snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
-        snprintf(key_io, sizeof(key_io), "Pin-%d-IO", i);
+    //     char key_mode[32];
+    //     char key_io[32];
 
-        // Default mode = OFF (0)
-        ESP_ERROR_CHECK(nvs_save_int("Pins", key_mode, 0));
+    //     snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
+    //     snprintf(key_io, sizeof(key_io), "Pin-%d-IO", i);
 
-        // Default IO = OUTPUT (0)
-        ESP_ERROR_CHECK(nvs_save_int("Pins", key_io, 0));
-    }
+    //     // Default mode = OFF (0)
+    //     ESP_ERROR_CHECK(nvs_save_int("Pins", key_mode, 0));
+
+    //     // Default IO = OUTPUT (0)
+    //     ESP_ERROR_CHECK(nvs_save_int("Pins", key_io, 0));
+    // }
 }
 
 /* FreeRTOS event group to signal when we are connected/disconnected */
@@ -261,7 +272,6 @@ void wifi_init_softap(void)
 
     ESP_LOGI(TAG_AP, "SoftAP started. SSID:%s password:%s channel:%d",
              nvs_global.net_settings.ap_ssid, nvs_global.net_settings.ap_password, EXAMPLE_ESP_WIFI_CHANNEL);
-
 }
 
 /* Initialize wifi station */
@@ -296,7 +306,6 @@ void wifi_init_sta(void)
 
     ESP_LOGI(TAG_STA, "wifi_init_sta finished. SSID:%s PASS:%s",
              nvs_global.net_settings.sta_ssid, nvs_global.net_settings.sta_password);
-
 }
 
 void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_netif_sta)
@@ -342,7 +351,9 @@ static esp_err_t base_handler(httpd_req_t *req)
 
 static esp_err_t Conf_Reset(httpd_req_t *req)
 {
-    ESP_ERROR_CHECK(nvs_save_int("Config", "Network", -1));
+    // ESP_ERROR_CHECK(nvs_save_int("Config", "Network", -1));
+    nvs_update(&nvs_global, "net_settings.network_mode", (void *)AP_MODE_END);
+
     esp_restart();
     return ESP_OK;
 }
@@ -371,11 +382,11 @@ static esp_err_t Network_Handler(httpd_req_t *req)
 
     if (isAP)
     {
-        ESP_ERROR_CHECK(nvs_save_int("Config", "Network", AP));
+        nvs_update(&nvs_global,"net_settings.network_mode",(void *)AP);
     }
     else if (isSTA)
     {
-        ESP_ERROR_CHECK(nvs_save_int("Config", "Network", STA));
+        nvs_update(&nvs_global,"net_settings.network_mode",(void *)STA);
     }
     else
     {
@@ -410,11 +421,11 @@ static esp_err_t Network_Handler(httpd_req_t *req)
     char STA_Password[64];
     strcpy(STA_Password, value);
 
-    ESP_ERROR_CHECK(nvs_save_str("AP", "SSID", AP_SSID));
-    ESP_ERROR_CHECK(nvs_save_str("AP", "Passphrase", AP_Password));
-    // STA
-    ESP_ERROR_CHECK(nvs_save_str("STA", "SSID", STA_SSID));
-    ESP_ERROR_CHECK(nvs_save_str("STA", "Passphrase", STA_Password));
+    nvs_update(&nvs_global, "net_settings.ap_ssid", AP_SSID);
+    nvs_update(&nvs_global, "net_settings.ap_password", AP_Password);
+
+    nvs_update(&nvs_global, "net_settings.sta_ssid", STA_SSID);
+    nvs_update(&nvs_global, "net_settings.sta_password", STA_Password);
 
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "/");
@@ -465,12 +476,12 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
 
     const int local_port = atoi(value);
 
-    // --- Save to NVS ---
-    ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", remote_ip));
-    ESP_ERROR_CHECK(nvs_save_int("OSC", "Remote_Port", remote_port));
+    nvs_update(&nvs_global, "osc_settings.remote_ip", (void *)remote_ip);
+    nvs_update(&nvs_global, "osc_settings.remote_port", &remote_port);
 
-    ESP_ERROR_CHECK(nvs_save_str("OSC", "Local_IP", local_ip));
-    ESP_ERROR_CHECK(nvs_save_int("OSC", "Local_Port", local_port));
+    nvs_update(&nvs_global, "osc_settings.local_ip", (void *)local_ip);
+    nvs_update(&nvs_global, "osc_settings.local_port", &local_port);
+
 
     // Respond immediately so browser stops loading
     httpd_resp_set_type(req, "text/plain");
@@ -524,7 +535,7 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
             int mode = atoi(value);
             if (mode < GPIO_OFF || mode > GPIO_DIGITAL)
                 mode = GPIO_OFF;
-            ESP_ERROR_CHECK(nvs_save_int("Pins", key_mode, mode));
+            // ESP_ERROR_CHECK(nvs_save_int("Pins", key_mode, mode));
         }
 
         // --- IO ---
@@ -533,7 +544,7 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
             int io = atoi(value);
             if (io < 0 || io > 1)
                 io = 0;
-            ESP_ERROR_CHECK(nvs_save_int("Pins", key_io, io));
+            // ESP_ERROR_CHECK(nvs_save_int("Pins", key_io, io));
         }
     }
 
@@ -559,7 +570,7 @@ static esp_err_t gpio_json_handler(httpd_req_t *req)
         // Append JSON entry
         offset += snprintf(json + offset, sizeof(json) - offset,
                            "\"%d\": {\"mode\": %d, \"io\": %d}%s",
-                           i, nvs_global.gpio_settings.pin_mode[i-1], nvs_global.gpio_settings.pin_io[i-1],
+                           i, nvs_global.gpio_settings.pin_mode[i - 1], nvs_global.gpio_settings.pin_io[i - 1],
                            (i < 28 ? "," : ""));
     }
 
@@ -736,6 +747,8 @@ char *getCurrentIP()
     case AP:
         netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
         break;
+    case AP_MODE_END:
+        break;
     }
 
     if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK)
@@ -848,7 +861,7 @@ static void udp_server_task(void *pvParameters)
     const int32_t local_port = nvs_global.osc_settings.local_port;
 
     // Load remote IP + port from NVS (used for sending)
-    char *remote_ip = nvs_global.osc_settings.remote_ip;
+    // char *remote_ip = nvs_global.osc_settings.remote_ip;
     const int32_t remote_port = nvs_global.osc_settings.remote_port;
 
     // Build last_client_addr from NVS values (IPv4 only)
@@ -857,12 +870,12 @@ static void udp_server_task(void *pvParameters)
     client_addr.sin_family = AF_INET;
     client_addr.sin_port = htons(remote_port);
 
-    if (inet_aton(remote_ip, &client_addr.sin_addr) == 0)
+    if (inet_aton(nvs_global.osc_settings.remote_ip, &client_addr.sin_addr) == 0)
     {
-        ESP_LOGE(TAG, "Invalid Remote_IP in NVS: %s", remote_ip);
+        ESP_LOGE(TAG, "Invalid Remote_IP in NVS: %s", nvs_global.osc_settings.remote_ip);
     }
 
-    free(remote_ip);
+    // free(nvs_global.osc_settings.remote_ip);
 
     memcpy(&last_client_addr, &client_addr, sizeof(client_addr));
     last_client_len = sizeof(client_addr);
@@ -984,7 +997,6 @@ void udp_send_osc(OscPacket msg)
     {
         // ESP_LOGI(TAG, "Sent: %s", msg);
     }
-    
 }
 
 // OSC
@@ -1091,7 +1103,7 @@ void send_digital_inputs(void)
 
     for (int i = 1; i < PINCOUNT + 1; i++)
     {
-        if (nvs_global.gpio_settings.pin_mode[i-1] == GPIO_DIGITAL)
+        if (nvs_global.gpio_settings.pin_mode[i - 1] == GPIO_DIGITAL)
         {
             int val = readDigitalPin(i);
             values[i - 1] = val;
@@ -1129,7 +1141,7 @@ void send_analogue_inputs(void)
 
     for (int i = 1; i < PINCOUNT + 1; i++)
     {
-        if (nvs_global.gpio_settings.pin_mode[i-1] == GPIO_ANALOGUE)
+        if (nvs_global.gpio_settings.pin_mode[i - 1] == GPIO_ANALOGUE)
         {
             float val = readAnaloguePin(i);
             OscMessageAddFloat32(&msg, val);
@@ -1155,8 +1167,18 @@ void gpio_task(void *pv)
     }
 }
 
+void throughput_test(void *pv)
+{
+    while (1)
+    {
 
-
+        // send_digital_inputs();  // only sends on change
+        // send_analogue_inputs(); // sends every cycle
+        sendPingMessage();
+        // Used to send only data on configured rate
+        vTaskDelay(pdMS_TO_TICKS(nvs_global.gpio_settings.gpio_rate));
+    }
+}
 
 void app_main(void)
 {
@@ -1174,15 +1196,17 @@ void app_main(void)
     flashLedRed();
 
     // Loads the Current Network Mode
-    const int NETWORK_MODE = nvs_load_int("Config", "Network", -1);
+    int32_t NETWORK_MODE = -1;
+    nvs_load_value("GLOBAL", "net_settings.network_mode", FIELD_ENUM, (void *)NETWORK_MODE, (void *)NETWORK_MODE);
+
     if (NETWORK_MODE < AP || NETWORK_MODE >= AP_MODE_END)
     {
-        init_default_Config();
+        init_default_Config(&nvs_global);
         esp_restart();
     }
 
     // Populates Global nvs
-    if (!nvs_populate_all(&nvs_global,&NVS_DEFAULTS))
+    if (!nvs_populate_all(&nvs_global, &NVS_DEFAULTS))
     {
         return;
     }
@@ -1243,7 +1267,8 @@ void app_main(void)
         else if (bits & WIFI_FAIL_BIT)
         {
             ESP_LOGE(TAG_STA, "Failed to connect to SSID:%s, password:%s", CONFIG_ESP_WIFI_REMOTE_AP_SSID, CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
-            ESP_ERROR_CHECK(nvs_save_int("Config", "Network", AP));
+            // ESP_ERROR_CHECK(nvs_save_int("Config", "Network", AP));
+            nvs_update(&nvs_global,"net_Settings.network_mode",(void *)AP);
             esp_restart();
         }
         else
@@ -1260,9 +1285,11 @@ void app_main(void)
     // Spawns the UDP recive Server that handles all Remote -> x-osc2 messages
     xTaskCreate(udp_server_task, "udp_server", 12288, (void *)AF_INET, 5, NULL);
 
+    xTaskCreate(throughput_test, "TT", 8192, NULL, 5, NULL);
+
     // Allows for analogue pin reads
-    adc_init();
+    // adc_init();
 
     // Spawns a task that sends the Current Configured Gpio
-    xTaskCreate(gpio_task, "GPIO Task", 8192, NULL, 5, NULL);
+    // xTaskCreate(gpio_task, "GPIO Task", 8192, NULL, 5, NULL);
 }

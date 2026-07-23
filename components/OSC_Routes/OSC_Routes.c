@@ -60,7 +60,8 @@ void handleRemoteIp(OscMessage *msg, const int channel, NVS_Global *ctx)
         return;
     }
 
-    ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", new_ip));
+    // ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", new_ip));
+    nvs_update(ctx,"osc_settings.remote_ip",(void *)new_ip);
 
     ESP_LOGI("OSC", "Set remote IP Successfull");
 }
@@ -136,11 +137,12 @@ void handleInputModeAnalogue(OscMessage *msg, const int channel, NVS_Global *ctx
     if (level != 0)
     {
         snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
-        ESP_ERROR_CHECK(nvs_save_value("Pins", NVS_Name_Buffer, NVS_TYPE_I32, GPIO_ANALOGUE));
+        // ESP_ERROR_CHECK(nvs_save_value("Pins", NVS_Name_Buffer, NVS_TYPE_I32, GPIO_ANALOGUE));
+        // nvs_update(ctx,)
     }
 
     snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
-    ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
+    // ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
 }
 
 void handleInputModeDigital(OscMessage *msg, const int channel, NVS_Global *ctx)
@@ -161,11 +163,11 @@ void handleInputModeDigital(OscMessage *msg, const int channel, NVS_Global *ctx)
     if (level != 0)
     {
         snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
-        ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_DIGITAL));
+        // ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_DIGITAL));
     }
 
     snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
-    ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
+    // ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
 }
 
 void handleInputModeSerial(OscMessage *msg, const int channel, NVS_Global *ctx)
@@ -193,8 +195,9 @@ void handleAnalogueRate(OscMessage *msg, const int channel, NVS_Global *ctx)
         ESP_LOGE("OSC", "Failed to get osc contents");
         return;
     }
+    // ESP_ERROR_CHECK(nvs_save_int("GPIO", "Rate", New_Rate));
+    nvs_update(ctx,"gpio_settings.gpio_rate",(void *)New_Rate);
 
-    ESP_ERROR_CHECK(nvs_save_int("GPIO", "Rate", New_Rate));
 }
 
 void handleAnalogueComparatorRead(OscMessage *msg, const int channel, NVS_Global *ctx)
