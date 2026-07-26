@@ -52,7 +52,7 @@
 
 #include "esp_log.h"
 
-#include "global_nvs.h"
+// #include "global_nvs.h"
 #include "NVS_Helper_Funcs.h"
 
 // typedef enum
@@ -62,7 +62,7 @@
 //     AP_MODE_END
 // } AP_Mode;
 
-#define PINCOUNT 28
+#define PINCOUNT CONFIG_PINCOUNT
 #define MAX_ATTEMPS 10
 
 #if CONFIG_ESP_WIFI_AUTH_OPEN
@@ -139,38 +139,38 @@ void init_default_Config(NVS_Global *nvs)
        Network Settings
        ----------------------------------------- */
 
-    AP_Mode mode = AP;
-    nvs_update(nvs, "net_settings.network_mode", &mode);
+    uint32_t mode = AP;
+    ESP_ERROR_CHECK(nvs_update(nvs, "net_settings.network_mode", &mode));
 
-    nvs_update(nvs, "net_settings.ap_ssid", CONFIG_ESP_WIFI_AP_SSID);
-    nvs_update(nvs, "net_settings.ap_password", CONFIG_ESP_WIFI_AP_PASSWORD);
+    ESP_ERROR_CHECK(nvs_update(nvs, "net_settings.ap_ssid", CONFIG_ESP_WIFI_AP_SSID));
+    ESP_ERROR_CHECK(nvs_update(nvs, "net_settings.ap_password", CONFIG_ESP_WIFI_AP_PASSWORD));
 
-    nvs_update(nvs, "net_settings.sta_ssid", CONFIG_ESP_WIFI_REMOTE_AP_SSID);
-    nvs_update(nvs, "net_settings.sta_password", CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
+    ESP_ERROR_CHECK(nvs_update(nvs, "net_settings.sta_ssid", CONFIG_ESP_WIFI_REMOTE_AP_SSID));
+    ESP_ERROR_CHECK(nvs_update(nvs, "net_settings.sta_password", CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD));
 
     /* -----------------------------------------
        OSC Settings
        ----------------------------------------- */
 
-    nvs_update(nvs, "osc_settings.remote_ip", CONFIG_ESP_OSC_REMOTE_IP);
+    ESP_ERROR_CHECK(nvs_update(nvs, "osc_settings.remote_ip", CONFIG_ESP_OSC_REMOTE_IP));
 
     uint16_t remote_port = CONFIG_ESP_OSC_REMOTE_PORT;
-    nvs_update(nvs, "osc_settings.remote_port", &remote_port);
+    ESP_ERROR_CHECK(nvs_update(nvs, "osc_settings.remote_port", &remote_port));
 
-    nvs_update(nvs, "osc_settings.local_ip", CONFIG_ESP_OSC_LOCAL_IP);
+    ESP_ERROR_CHECK(nvs_update(nvs, "osc_settings.local_ip", CONFIG_ESP_OSC_LOCAL_IP));
 
     uint16_t local_port = CONFIG_ESP_OSC_LOCAL_PORT;
-    nvs_update(nvs, "osc_settings.local_port", &local_port);
+    ESP_ERROR_CHECK(nvs_update(nvs, "osc_settings.local_port", &local_port));
 
     bool bundles = false;
-    nvs_update(nvs, "osc_settings.bundle", &bundles);
+    ESP_ERROR_CHECK(nvs_update(nvs, "osc_settings.bundle", &bundles));
 
     bool prefix = false;
-    nvs_update(nvs, "osc_settings.address_prefix", &prefix);
+    ESP_ERROR_CHECK(nvs_update(nvs, "osc_settings.address_prefix", &prefix));
 
     // GPIO defaults
     uint32_t rate = 100;
-    nvs_update(&nvs_global, "gpio_settings.gpio_rate", &rate);
+    ESP_ERROR_CHECK(nvs_update(nvs, "gpio_settings.gpio_rate", &rate));
 
     // for (int i = 1; i < PINCOUNT + 1; i++)
     // {
@@ -352,7 +352,8 @@ static esp_err_t base_handler(httpd_req_t *req)
 static esp_err_t Conf_Reset(httpd_req_t *req)
 {
     // ESP_ERROR_CHECK(nvs_save_int("Config", "Network", -1));
-    nvs_update(&nvs_global, "net_settings.network_mode", (void *)AP_MODE_END);
+    uint32_t mode = AP_MODE_END;
+    ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.network_mode", &mode));
 
     esp_restart();
     return ESP_OK;
@@ -379,19 +380,21 @@ static esp_err_t Network_Handler(httpd_req_t *req)
 
     const bool isAP = strcmp(mode, "AP") == 0;
     const bool isSTA = strcmp(mode, "STA") == 0;
+    uint32_t mode_value;
 
     if (isAP)
     {
-        nvs_update(&nvs_global,"net_settings.network_mode",(void *)AP);
+        mode_value = AP;
     }
     else if (isSTA)
     {
-        nvs_update(&nvs_global,"net_settings.network_mode",(void *)STA);
+        mode_value = STA;
     }
     else
     {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid mode");
     }
+    ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.network_mode", &mode_value));
 
     // --- Read AP SSID (string) ---
     if (httpd_query_key_value(query, "AP-SSID", value, sizeof(value)) != ESP_OK)
@@ -421,11 +424,11 @@ static esp_err_t Network_Handler(httpd_req_t *req)
     char STA_Password[64];
     strcpy(STA_Password, value);
 
-    nvs_update(&nvs_global, "net_settings.ap_ssid", AP_SSID);
-    nvs_update(&nvs_global, "net_settings.ap_password", AP_Password);
+    ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.ap_ssid", AP_SSID));
+    ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.ap_password", AP_Password));
 
-    nvs_update(&nvs_global, "net_settings.sta_ssid", STA_SSID);
-    nvs_update(&nvs_global, "net_settings.sta_password", STA_Password);
+    ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.sta_ssid", STA_SSID));
+    ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.sta_password", STA_Password));
 
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "/");
@@ -476,12 +479,11 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
 
     const int local_port = atoi(value);
 
-    nvs_update(&nvs_global, "osc_settings.remote_ip", (void *)remote_ip);
-    nvs_update(&nvs_global, "osc_settings.remote_port", &remote_port);
+    ESP_ERROR_CHECK(nvs_update(&nvs_global, "osc_settings.remote_ip", &remote_ip));
+    ESP_ERROR_CHECK(nvs_update(&nvs_global, "osc_settings.remote_port", &remote_port));
 
-    nvs_update(&nvs_global, "osc_settings.local_ip", (void *)local_ip);
-    nvs_update(&nvs_global, "osc_settings.local_port", &local_port);
-
+    ESP_ERROR_CHECK(nvs_update(&nvs_global, "osc_settings.local_ip", &local_ip));
+    ESP_ERROR_CHECK(nvs_update(&nvs_global, "osc_settings.local_port", &local_port));
 
     // Respond immediately so browser stops loading
     httpd_resp_set_type(req, "text/plain");
@@ -1196,20 +1198,23 @@ void app_main(void)
     flashLedRed();
 
     // Loads the Current Network Mode
-    int32_t NETWORK_MODE = -1;
-    nvs_load_value("GLOBAL", "net_settings.network_mode", FIELD_ENUM, (void *)NETWORK_MODE, (void *)NETWORK_MODE);
-
-    if (NETWORK_MODE < AP || NETWORK_MODE >= AP_MODE_END)
+    uint32_t network_mode_default = AP_MODE_END; // pick your actual desired default
+    uint32_t network_mode = 0;
+    esp_err_t err = nvs_load_value("GLOBAL", "net_settings.network_mode", FIELD_ENUM, &network_mode_default, &network_mode);
+    if (network_mode < AP || network_mode >= AP_MODE_END)
     {
         init_default_Config(&nvs_global);
         esp_restart();
     }
 
     // Populates Global nvs
-    if (!nvs_populate_all(&nvs_global, &NVS_DEFAULTS))
-    {
+    err = nvs_populate_all(&nvs_global, &NVS_DEFAULTS);
+    if (err != ESP_OK){
+        ESP_LOGE("NVS_POPULATE", "nvs_populate_all failed: %s", esp_err_to_name(err));
+        vTaskDelay(pdTICKS_TO_MS(1000));
         return;
     }
+    
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -1218,7 +1223,7 @@ void app_main(void)
     esp_netif_t *sta = NULL;
 
     // Has to be initalised on a switch case due to esp_netif_create_default_wifi_(mode) starting its own threat that can cause problems
-    if (NETWORK_MODE == AP)
+    if (network_mode == AP)
     {
         ap = esp_netif_create_default_wifi_ap();
     }
@@ -1234,7 +1239,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
 
-    switch (NETWORK_MODE)
+    switch (network_mode)
     {
     case AP:
         // --- AP ONLY PATH ---
@@ -1268,7 +1273,8 @@ void app_main(void)
         {
             ESP_LOGE(TAG_STA, "Failed to connect to SSID:%s, password:%s", CONFIG_ESP_WIFI_REMOTE_AP_SSID, CONFIG_ESP_WIFI_REMOTE_AP_PASSWORD);
             // ESP_ERROR_CHECK(nvs_save_int("Config", "Network", AP));
-            nvs_update(&nvs_global,"net_Settings.network_mode",(void *)AP);
+            uint32_t AP_value = AP;
+            ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.network_mode", &AP_value));
             esp_restart();
         }
         else

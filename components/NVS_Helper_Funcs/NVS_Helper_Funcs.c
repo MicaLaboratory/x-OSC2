@@ -12,68 +12,9 @@
 #include <string.h>
 #include "esp_err.h"
 
-#define PINCOUNT 28
 
-typedef enum
-{
-    AP = 1,
-    STA,
-    AP_MODE_END
-} AP_Mode;
 
-typedef enum
-{
-    GPIO_OFF,
-    GPIO_ANALOGUE,
-    GPIO_DIGITAL
-} GPIO_State;
 
-typedef enum
-{
-    GPIO_OUTPUT,
-    GPIO_INPUT,
-} GPIO_IO;
-
-typedef struct
-{
-    AP_Mode network_mode;
-    const char *ap_ssid;
-    const char *ap_password;
-    const char *sta_ssid;
-    const char *sta_password;
-} Network_Setttings_t;
-
-typedef struct
-{
-    const char *remote_ip;
-    uint16_t remote_port;
-    const char *local_ip;
-    uint16_t local_port;
-    bool bundle;
-    bool address_prefix;
-} Osc_Settings_t;
-
-typedef struct
-{
-    uint32_t gpio_rate;
-    GPIO_State pin_mode[PINCOUNT];
-    GPIO_IO pin_io[PINCOUNT];
-} GPIO_Settings_t;
-
-typedef struct
-{
-    Network_Setttings_t net_settings;
-    Osc_Settings_t osc_settings;
-    GPIO_Settings_t gpio_settings;
-} NVS_Global;
-
-typedef struct
-{
-    const char *name;
-    size_t offset;
-    size_t size;
-    FieldType type;
-} FieldDesc;
 
 static const FieldDesc g_fields[] = {
     {"net_settings.network_mode",
@@ -142,6 +83,8 @@ static const FieldDesc g_fields[] = {
 esp_err_t nvs_update(NVS_Global *nvs, const char *field_name, const void *value);
 esp_err_t nvs_populate_value(NVS_Global *nvs, const char *field_name, const void *default_value);
 esp_err_t nvs_populate_all(NVS_Global *nvs, const NVS_Global *defaults);
+esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_type_t type, const void *value);
+esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType type, const void *default_value, void *out_value);
 
 //
 
@@ -149,7 +92,6 @@ static inline const void *get_default_value(const NVS_Global *defaults, const Fi
 {
     return (const uint8_t *)defaults + fd->offset;
 }
-
 
 esp_err_t nvs_update(NVS_Global *nvs, const char *field_name, const void *value)
 {
@@ -187,8 +129,20 @@ esp_err_t nvs_update(NVS_Global *nvs, const char *field_name, const void *value)
 
         case FIELD_STR:
             err = nvs_save_value("GLOBAL", field_name, NVS_TYPE_STR, value);
-            *(const char **)target = (const char *)value;
+            if (err != ESP_OK){
+                return err;
+            }
+            char * copy = strdup((const char *)value);
+            if (copy !=  NULL){
+                free(*(char **)target);
+                *(char **)target = copy;
+            } else {
+                err = ESP_ERR_NO_MEM;
+            }
             return err;
+
+        default:
+            return ESP_ERR_INVALID_ARG;
         }
     }
 
@@ -238,7 +192,24 @@ esp_err_t nvs_populate_value(NVS_Global *nvs, const char *field_name, const void
         {
             char *tmp = NULL;
             err = nvs_load_value("GLOBAL", field_name, FIELD_STR, default_value, &tmp);
-            *(const char **)target = (err == ESP_OK) ? tmp : (const char *)default_value;
+            
+            if (err != ESP_OK) {
+                char *dup = strdup(*(const char **)default_value);
+                if (dup != NULL)
+                {
+                    free(*(char **)target);
+                    *(char **)target = dup;
+                }
+                else
+                {
+                    err = ESP_ERR_NO_MEM;
+                }
+                return err;
+            }
+
+            free(*(char **)target);
+            *(char **)target = tmp;
+
             return err;
         }
 
@@ -258,10 +229,10 @@ esp_err_t nvs_populate_all(NVS_Global *nvs, const NVS_Global *defaults)
         const void *def = get_default_value(defaults, fd);
 
         esp_err_t err = nvs_populate_value(nvs, fd->name, def);
-        if (err != ESP_OK) {
+        if (err != ESP_OK)
+        {
             return err;
         }
-            
     }
 
     return ESP_OK;
@@ -273,9 +244,9 @@ esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_type_t
 {
     nvs_handle_t handle;
     esp_err_t err = nvs_open(namespace_name, NVS_READWRITE, &handle);
-    if (err != ESP_OK)
+    if (err != ESP_OK){
         return err;
-
+    }
     switch (type)
     {
     case NVS_TYPE_I32:
@@ -328,9 +299,25 @@ esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType 
 
     if (err != ESP_OK)
     {
-        // Namespace missing → use default
-        memcpy(out_value, default_value, sizeof(uint32_t)); // safe for all non-string types
-        return ESP_ERR_NVS_NOT_FOUND;
+        switch (type)
+        {
+            case FIELD_U32:
+            case FIELD_ENUM:
+                *(uint32_t *)out_value = *(const uint32_t *)default_value;
+                break;
+            case FIELD_U16:
+                *(uint16_t *)out_value = *(const uint16_t *)default_value;
+                break;
+            case FIELD_BOOL:
+                *(bool *)out_value = *(const bool *)default_value;
+                break;
+            case FIELD_STR:
+                *(char **)out_value = strdup(*(const char **)default_value);
+                break;
+            default:
+                return ESP_ERR_INVALID_ARG;
+        }
+        return err;
     }
 
     switch (type)
@@ -371,12 +358,6 @@ esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType 
     {
         size_t len = 0;
         err = nvs_get_str(handle, key, NULL, &len);
-
-        if (err == ESP_ERR_NVS_NOT_FOUND)
-        {
-            *(char **)out_value = strdup((const char *)default_value);
-            break;
-        }
 
         if (err != ESP_OK)
         {

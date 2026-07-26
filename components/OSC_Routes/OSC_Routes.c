@@ -6,7 +6,7 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "led_strip.h"
-#include "NVS_Helper_Funcs.h"
+
 
 static led_strip_handle_t led_strip;
 

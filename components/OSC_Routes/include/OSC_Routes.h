@@ -7,7 +7,7 @@
 #include "OscPacket.h"
 #include "OscSlip.h"
 #include "Osc99.h"
-#include "../../main/global_nvs.h"
+#include "NVS_Helper_Funcs.h"
 
 typedef struct
 {

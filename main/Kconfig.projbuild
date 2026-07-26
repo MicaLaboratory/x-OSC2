@@ -139,6 +139,13 @@ menu "x-osc-2 Configuration"
 
 
     endmenu
+    menu "Board Information"
+        config PINCOUNT
+            int "Pincount"
+            default 28
+            help
+                Sets number of available GPIO pins
+    endmenu
     menu "Firmware Version"
         config  FIRMWARE_VERSION
             string  "Current Firmware Version"
