@@ -1200,7 +1200,8 @@ void app_main(void)
     // Loads the Current Network Mode
     uint32_t network_mode_default = AP_MODE_END; // pick your actual desired default
     uint32_t network_mode = 0;
-    esp_err_t err = nvs_load_value("GLOBAL", "net_settings.network_mode", FIELD_ENUM, &network_mode_default, &network_mode);
+    esp_err_t err = nvs_load_value("net_settings", "network_mode", FIELD_ENUM, &network_mode_default, &network_mode);
+    ESP_LOGE("NVS_LOAD","%s",esp_err_to_name(err));
     if (network_mode < AP || network_mode >= AP_MODE_END)
     {
         init_default_Config(&nvs_global);

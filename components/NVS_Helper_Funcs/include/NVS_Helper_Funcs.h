@@ -2,7 +2,6 @@
 #ifndef NVS_HELPER_H
 #define NVS_HELPER_H
 
-
 #include <stdint.h>
 #include "esp_err.h"
 #include "nvs.h"
@@ -19,7 +18,8 @@
 //     NVS_TYPE_BLOB
 // } nvs_value_type_t;
 
-typedef struct {
+typedef struct
+{
     const void *data;
     size_t size;
 } nvs_blob_t;
@@ -90,11 +90,12 @@ typedef struct
 typedef struct
 {
     const char *name;
+    const char *nvs_namespace;
+    const char *nvs_key;
     size_t offset;
     size_t size;
     FieldType type;
 } FieldDesc;
-
 
 void print_all_nvs_entries(const char *namespace);
 
@@ -102,6 +103,5 @@ esp_err_t nvs_update(NVS_Global *nvs, const char *field_name, const void *value)
 esp_err_t nvs_populate_value(NVS_Global *nvs, const char *field_name, const void *default_value);
 esp_err_t nvs_populate_all(NVS_Global *nvs, const NVS_Global *defaults);
 esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType type, const void *default_value, void *out_value);
-
 
 #endif
