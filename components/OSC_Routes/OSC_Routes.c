@@ -61,7 +61,7 @@ void handleRemoteIp(OscMessage *msg, const int channel, NVS_Global *ctx)
     }
 
     // ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", new_ip));
-    nvs_update(ctx,"osc_settings.remote_ip",(void *)new_ip);
+    nvs_update(ctx,"osc_settings.remote_ip",&new_ip);
 
     ESP_LOGI("OSC", "Set remote IP Successfull");
 }
@@ -78,7 +78,7 @@ void handleRemotePort(OscMessage *msg, const int channel, NVS_Global *ctx)
     }
 
     // ESP_ERROR_CHECK(nvs_save_int("OSC", "Remote_Port", new_port));
-    nvs_update(ctx,"osc_settings.remote_port",(void *)new_port);
+    nvs_update(ctx,"osc_settings.remote_port",&new_port);
 
     ESP_LOGI("OSC", "Remote port set successfully");
 }
@@ -196,7 +196,7 @@ void handleAnalogueRate(OscMessage *msg, const int channel, NVS_Global *ctx)
         return;
     }
     // ESP_ERROR_CHECK(nvs_save_int("GPIO", "Rate", New_Rate));
-    nvs_update(ctx,"gpio_settings.gpio_rate",(void *)New_Rate);
+    nvs_update(ctx,"gpio_settings.gpio_rate",&New_Rate);
 
 }
 

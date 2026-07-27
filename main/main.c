@@ -127,6 +127,8 @@ static const NVS_Global NVS_DEFAULTS = {
     },
     .gpio_settings = {
         .gpio_rate = 1000,
+        .pin_mode = {GPIO_OFF},
+        .pin_io = {GPIO_OUTPUT},
     }};
 
 // Helper funcs
@@ -172,21 +174,16 @@ void init_default_Config(NVS_Global *nvs)
     uint32_t rate = 100;
     ESP_ERROR_CHECK(nvs_update(nvs, "gpio_settings.gpio_rate", &rate));
 
-    // for (int i = 1; i < PINCOUNT + 1; i++)
-    // {
+    // Pin defaults: all pins OFF / OUTPUT, saved as two blobs
+    GPIO_State default_modes[PINCOUNT];
+    GPIO_IO default_ios[PINCOUNT];
+    for (int i = 0; i < PINCOUNT; i++)
+    {
+        default_modes[i] = GPIO_OFF;
+        default_ios[i] = GPIO_OUTPUT;
+    }
 
-    //     char key_mode[32];
-    //     char key_io[32];
-
-    //     snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
-    //     snprintf(key_io, sizeof(key_io), "Pin-%d-IO", i);
-
-    //     // Default mode = OFF (0)
-    //     ESP_ERROR_CHECK(nvs_save_int("Pins", key_mode, 0));
-
-    //     // Default IO = OUTPUT (0)
-    //     ESP_ERROR_CHECK(nvs_save_int("Pins", key_io, 0));
-    // }
+    ESP_ERROR_CHECK(nvs_save_gpio_pins(default_modes, default_ios));
 }
 
 /* FreeRTOS event group to signal when we are connected/disconnected */
@@ -319,26 +316,7 @@ void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_netif_sta)
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(esp_netif_ap));
 }
 
-// static const char *TAG = "HTTP_SERVER";
 
-// void handler(httpd_req_t *req)
-// {
-//     const int sockfd = httpd_req_to_sockfd(req);
-
-//     struct sockaddr_storage addr;
-//     socklen_t addr_len = sizeof(addr);
-
-//     getpeername(sockfd, (struct sockaddr *)&addr, &addr_len);
-
-//     if (addr.ss_family == AF_INET)
-//     {
-//         struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
-//         char ip[16];
-//         inet_ntop(AF_INET, &addr_in->sin_addr, ip, sizeof(ip));
-
-//         ESP_LOGI("HTTP", "Client IP: %s", ip);
-//     }
-// }
 
 /* An HTTP GET handler */
 static esp_err_t base_handler(httpd_req_t *req)
@@ -514,41 +492,37 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
     // --- Parse all pins ---
     char value[32];
 
-    for (int i = 1; i <= 28; i++)
+    for (int i = 1; i <= PINCOUNT; i++)
     {
-
         char field_mode[16];
         char field_io[16];
 
-        char key_mode[32];
-        char key_io[32];
-
-        // HTML field names
         snprintf(field_mode, sizeof(field_mode), "pin%d", i);
         snprintf(field_io, sizeof(field_io), "pin%d-io", i);
 
-        // NVS keys
-        snprintf(key_mode, sizeof(key_mode), "Pin-%d-PType", i);
-        snprintf(key_io, sizeof(key_io), "Pin-%d-IO", i);
-
-        // --- MODE ---
         if (httpd_query_key_value(body, field_mode, value, sizeof(value)) == ESP_OK)
         {
             int mode = atoi(value);
             if (mode < GPIO_OFF || mode > GPIO_DIGITAL)
                 mode = GPIO_OFF;
-            // ESP_ERROR_CHECK(nvs_save_int("Pins", key_mode, mode));
+            nvs_global.gpio_settings.pin_mode[i - 1] = (GPIO_State)mode;
         }
 
-        // --- IO ---
         if (httpd_query_key_value(body, field_io, value, sizeof(value)) == ESP_OK)
         {
             int io = atoi(value);
             if (io < 0 || io > 1)
                 io = 0;
-            // ESP_ERROR_CHECK(nvs_save_int("Pins", key_io, io));
+            nvs_global.gpio_settings.pin_io[i - 1] = (GPIO_IO)io;
         }
     }
+
+    esp_err_t err = nvs_save_gpio_pins(nvs_global.gpio_settings.pin_mode, nvs_global.gpio_settings.pin_io);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE("GPIO_Handler", "Failed to persist pin config: %s", esp_err_to_name(err));
+    }
+
 
     // --- Respond so browser stops loading ---
     httpd_resp_set_type(req, "text/plain");
@@ -992,8 +966,8 @@ void udp_send_osc(OscPacket msg)
 
     if (err < 0)
     {
-        ESP_LOGE("UDP_SEND", "Send failed: errno %d", errno);
-        ESP_LOGI("UDP_SEND", "free_heap=%u", esp_get_free_heap_size());
+        // ESP_LOGE("UDP_SEND", "Send failed: errno %d", errno);
+        // ESP_LOGI("UDP_SEND", "free_heap=%u", esp_get_free_heap_size());
     }
     else
     {
@@ -1085,16 +1059,6 @@ float readAnaloguePin(const int pin)
 
     return (float)raw / 4095.0f;
 }
-
-// Reads the Current Pin Values of active pins and sends it via osc
-
-// typedef enum GPIO_STATE
-// {
-//     OFF,
-//     ANALOGUE,
-//     DIGITAL,
-//     END,
-// } GPIO_STATE;
 
 static int last_digital[PINCOUNT] = {0};
 
@@ -1201,7 +1165,7 @@ void app_main(void)
     uint32_t network_mode_default = AP_MODE_END; // pick your actual desired default
     uint32_t network_mode = 0;
     esp_err_t err = nvs_load_value("net_settings", "network_mode", FIELD_ENUM, &network_mode_default, &network_mode);
-    ESP_LOGE("NVS_LOAD","%s",esp_err_to_name(err));
+    ESP_LOGE("NVS_LOAD", "%s", esp_err_to_name(err));
     if (network_mode < AP || network_mode >= AP_MODE_END)
     {
         init_default_Config(&nvs_global);
@@ -1210,12 +1174,18 @@ void app_main(void)
 
     // Populates Global nvs
     err = nvs_populate_all(&nvs_global, &NVS_DEFAULTS);
-    if (err != ESP_OK){
+    if (err != ESP_OK)
+    {
         ESP_LOGE("NVS_POPULATE", "nvs_populate_all failed: %s", esp_err_to_name(err));
         vTaskDelay(pdTICKS_TO_MS(1000));
         return;
     }
-    
+
+    esp_err_t gpio_err = nvs_load_gpio_pins(nvs_global.gpio_settings.pin_mode, nvs_global.gpio_settings.pin_io, NVS_DEFAULTS.gpio_settings.pin_mode, NVS_DEFAULTS.gpio_settings.pin_io);
+    if (gpio_err != ESP_OK && gpio_err != ESP_ERR_NVS_NOT_FOUND)
+    {
+        ESP_LOGE("NVS_GPIO", "Failed to load pin config: %s", esp_err_to_name(gpio_err));
+    }
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -1292,11 +1262,11 @@ void app_main(void)
     // Spawns the UDP recive Server that handles all Remote -> x-osc2 messages
     xTaskCreate(udp_server_task, "udp_server", 12288, (void *)AF_INET, 5, NULL);
 
-    xTaskCreate(throughput_test, "TT", 8192, NULL, 5, NULL);
+    // xTaskCreate(throughput_test, "TT", 8192, NULL, 5, NULL);
 
     // Allows for analogue pin reads
-    // adc_init();
+    adc_init();
 
     // Spawns a task that sends the Current Configured Gpio
-    // xTaskCreate(gpio_task, "GPIO Task", 8192, NULL, 5, NULL);
+    xTaskCreate(gpio_task, "GPIO Task", 8192, NULL, 5, NULL);
 }
