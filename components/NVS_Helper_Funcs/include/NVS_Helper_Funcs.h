@@ -103,6 +103,10 @@ esp_err_t nvs_update(NVS_Global *nvs, const char *field_name, const void *value)
 esp_err_t nvs_populate_value(NVS_Global *nvs, const char *field_name, const void *default_value);
 esp_err_t nvs_populate_all(NVS_Global *nvs, const NVS_Global *defaults);
 esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType type, const void *default_value, void *out_value);
+esp_err_t nvs_save_gpio_modes(const GPIO_State *modes);
+esp_err_t nvs_load_gpio_modes(GPIO_State *out_modes, const GPIO_State *default_modes);
+esp_err_t nvs_save_gpio_ios(const GPIO_IO *ios);
+esp_err_t nvs_load_gpio_ios(GPIO_IO *out_ios, const GPIO_IO *default_ios);
 esp_err_t nvs_save_gpio_pins(const GPIO_State *modes, const GPIO_IO *ios);
 esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO_State *default_modes, const GPIO_IO *default_ios);
 

@@ -398,45 +398,78 @@ esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType 
     return err;
 }
 
-esp_err_t nvs_save_gpio_pins(const GPIO_State *modes, const GPIO_IO *ios)
-{
-    nvs_blob_t modes_blob = {.data = modes, .size = sizeof(GPIO_State) * PINCOUNT};
-    esp_err_t err = nvs_save_value("gpio_pins", "modes", NVS_TYPE_BLOB, &modes_blob);
-    if (err != ESP_OK)
-        return err;
+// In NVS_Helper_Funcs.c
 
-    nvs_blob_t ios_blob = {.data = ios, .size = sizeof(GPIO_IO) * PINCOUNT};
-    err = nvs_save_value("gpio_pins", "ios", NVS_TYPE_BLOB, &ios_blob);
-    return err;
+esp_err_t nvs_save_gpio_modes(const GPIO_State *modes)
+{
+    nvs_blob_t blob = {.data = modes, .size = sizeof(GPIO_State) * PINCOUNT};
+    return nvs_save_value("gpio_pins", "modes", NVS_TYPE_BLOB, &blob);
 }
 
-esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO_State *default_modes, const GPIO_IO *default_ios)
+esp_err_t nvs_load_gpio_modes(GPIO_State *out_modes, const GPIO_State *default_modes)
 {
     nvs_handle_t handle;
     esp_err_t err = nvs_open("gpio_pins", NVS_READONLY, &handle);
     if (err != ESP_OK)
     {
         memcpy(out_modes, default_modes, sizeof(GPIO_State) * PINCOUNT);
+        return err;
+    }
+
+    size_t size = sizeof(GPIO_State) * PINCOUNT;
+    err = nvs_get_blob(handle, "modes", out_modes, &size);
+    if (err != ESP_OK || size != sizeof(GPIO_State) * PINCOUNT)
+        memcpy(out_modes, default_modes, sizeof(GPIO_State) * PINCOUNT);
+
+    nvs_close(handle);
+    return err;
+}
+
+esp_err_t nvs_save_gpio_ios(const GPIO_IO *ios)
+{
+    nvs_blob_t blob = {.data = ios, .size = sizeof(GPIO_IO) * PINCOUNT};
+    return nvs_save_value("gpio_pins", "ios", NVS_TYPE_BLOB, &blob);
+}
+
+esp_err_t nvs_load_gpio_ios(GPIO_IO *out_ios, const GPIO_IO *default_ios)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open("gpio_pins", NVS_READONLY, &handle);
+    if (err != ESP_OK)
+    {
         memcpy(out_ios, default_ios, sizeof(GPIO_IO) * PINCOUNT);
         return err;
     }
 
-    size_t modes_size = sizeof(GPIO_State) * PINCOUNT;
-    esp_err_t modes_err = nvs_get_blob(handle, "modes", out_modes, &modes_size);
-    if (modes_err != ESP_OK || modes_size != sizeof(GPIO_State) * PINCOUNT)
-    {
-        memcpy(out_modes, default_modes, sizeof(GPIO_State) * PINCOUNT);
-    }
-
-    size_t ios_size = sizeof(GPIO_IO) * PINCOUNT;
-    esp_err_t ios_err = nvs_get_blob(handle, "ios", out_ios, &ios_size);
-    if (ios_err != ESP_OK || ios_size != sizeof(GPIO_IO) * PINCOUNT)
-    {
+    size_t size = sizeof(GPIO_IO) * PINCOUNT;
+    err = nvs_get_blob(handle, "ios", out_ios, &size);
+    if (err != ESP_OK || size != sizeof(GPIO_IO) * PINCOUNT)
         memcpy(out_ios, default_ios, sizeof(GPIO_IO) * PINCOUNT);
-    }
 
     nvs_close(handle);
-    return (modes_err == ESP_OK && ios_err == ESP_OK) ? ESP_OK : ESP_ERR_NVS_NOT_FOUND;
+    return err;
+}
+
+esp_err_t nvs_save_gpio_pins(const GPIO_State *modes, const GPIO_IO *ios)
+{
+    esp_err_t err = nvs_save_gpio_modes(modes);
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
+    err = nvs_save_gpio_modes(ios);
+    return err;
+}
+esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO_State *default_modes, const GPIO_IO *default_ios)
+{
+    esp_err_t err = nvs_load_gpio_modes(out_modes,default_modes);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = nvs_load_gpio_ios(out_ios,default_ios);
+    return err;
 }
 
 // Print all NVS entries
