@@ -22,13 +22,6 @@ typedef struct
     int handle;
 } Socket;
 
-typedef enum
-{
-    SOCK_OK,
-    SOCK_errno,
-    SOCK_BIND
-} socket_err;
-
 //------------------------------------------------------------------------------
 // Variables
 
@@ -39,19 +32,20 @@ static Osc_Settings_t nvs_osc;
 //------------------------------------------------------------------------------
 // Function declarations
 
-void networking_init(const Osc_Settings_t *cfg);
+void networking_init(const Osc_Settings_t *cfg,const WirelessCallbacks *callbacks_);
 esp_err_t wifi_configure_softap(const NVS_Global *ctx, wifi_config_t *cfg);
 esp_err_t wifi_configure_station(const NVS_Global *ctx, wifi_config_t *cfg);
 static void nvs_osc_configure(const Osc_Settings_t *cfg);
 static socket_err socket_init();
 static void receive_task(void *pvParameters);
-void udp_send_osc(const char *contents, const size_t size);
+int udp_send_osc(const char *contents, const size_t size);
 
 //------------------------------------------------------------------------------
 // Functions
-void networking_init(const Osc_Settings_t *cfg)
+void networking_init(const Osc_Settings_t *cfg,const WirelessCallbacks *callbacks_)
 {
     nvs_osc_configure(cfg);
+    callbacks = *callbacks_;
     socket_init();
     xTaskCreate(receive_task, "receive_task", 12288, (void *)AF_INET, 5, NULL);
 }
@@ -156,12 +150,13 @@ static void receive_task(void *pvParameters)
     }
 }
 
-void udp_send_osc(const char *contents, const size_t size)
+int udp_send_osc(const char *contents, const size_t size)
 {
     if (sock.handle < 0)
     {
-        ESP_LOGE("UDP_Send", "Socket not initialized");
-        return;
+        // TODO - 
+        // ESP_LOGE("UDP_Send", "Socket not initialized");
+        return -1;
     }
 
     const struct sockaddr_in dest_addr = {

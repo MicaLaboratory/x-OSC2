@@ -4,7 +4,7 @@
 typedef struct
 {
 
-} AP;
+} AP_cfg;
 
 typedef struct
 {

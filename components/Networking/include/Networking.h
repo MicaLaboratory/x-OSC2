@@ -1,1 +1,27 @@
-void func(void);
+#ifndef NETWORKING_H
+#define NETWORKING_H
+
+#include <stdio.h>
+#include <string.h>
+#include "settings.h"
+#include "NVS_Helper_Funcs.h"
+#include "esp_wifi.h"
+#include "lwip/sockets.h"
+
+typedef enum
+{
+    SOCK_OK,
+    SOCK_errno,
+    SOCK_BIND
+} socket_err;
+
+
+void networking_init(const Osc_Settings_t *cfg,const WirelessCallbacks *callbacks_);
+esp_err_t wifi_configure_softap(const NVS_Global *ctx, wifi_config_t *cfg);
+esp_err_t wifi_configure_station(const NVS_Global *ctx, wifi_config_t *cfg);
+static void nvs_osc_configure(const Osc_Settings_t *cfg);
+static socket_err socket_init();
+static void receive_task(void *pvParameters);
+int udp_send_osc(const char *contents, const size_t size);
+
+#endif 
