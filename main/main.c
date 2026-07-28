@@ -806,162 +806,162 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMes
     flashLedRed();
 }
 
-/* UDP socket tests */
+// /* UDP socket tests */
 
-static int sock = -1;
-static struct sockaddr_storage last_client_addr;
-static socklen_t last_client_len = 0;
+// static int sock = -1;
+// static struct sockaddr_storage last_client_addr;
+// static socklen_t last_client_len = 0;
 
-static void udp_server_task(void *pvParameters)
-{
-    const char *TAG = "UDP Server";
-    char rx_buffer[128];
-    char addr_str[128];
-    int addr_family = (int)pvParameters;
-    int ip_protocol = 0;
-    struct sockaddr_in6 dest_addr;
+// static void udp_server_task(void *pvParameters)
+// {
+//     const char *TAG = "UDP Server";
+//     char rx_buffer[128];
+//     char addr_str[128];
+//     int addr_family = (int)pvParameters;
+//     int ip_protocol = 0;
+//     struct sockaddr_in6 dest_addr;
 
-    // Load local bind port from NVS
-    const int32_t local_port = nvs_global.osc_settings.local_port;
+//     // Load local bind port from NVS
+//     const int32_t local_port = nvs_global.osc_settings.local_port;
 
-    // Load remote IP + port from NVS (used for sending)
-    // char *remote_ip = nvs_global.osc_settings.remote_ip;
-    const int32_t remote_port = nvs_global.osc_settings.remote_port;
+//     // Load remote IP + port from NVS (used for sending)
+//     // char *remote_ip = nvs_global.osc_settings.remote_ip;
+//     const int32_t remote_port = nvs_global.osc_settings.remote_port;
 
-    // Build last_client_addr from NVS values (IPv4 only)
-    struct sockaddr_in client_addr;
-    memset(&client_addr, 0, sizeof(client_addr));
-    client_addr.sin_family = AF_INET;
-    client_addr.sin_port = htons(remote_port);
+//     // Build last_client_addr from NVS values (IPv4 only)
+//     struct sockaddr_in client_addr;
+//     memset(&client_addr, 0, sizeof(client_addr));
+//     client_addr.sin_family = AF_INET;
+//     client_addr.sin_port = htons(remote_port);
 
-    if (inet_aton(nvs_global.osc_settings.remote_ip, &client_addr.sin_addr) == 0)
-    {
-        ESP_LOGE(TAG, "Invalid Remote_IP in NVS: %s", nvs_global.osc_settings.remote_ip);
-    }
+//     if (inet_aton(nvs_global.osc_settings.remote_ip, &client_addr.sin_addr) == 0)
+//     {
+//         ESP_LOGE(TAG, "Invalid Remote_IP in NVS: %s", nvs_global.osc_settings.remote_ip);
+//     }
 
-    // free(nvs_global.osc_settings.remote_ip);
+//     // free(nvs_global.osc_settings.remote_ip);
 
-    memcpy(&last_client_addr, &client_addr, sizeof(client_addr));
-    last_client_len = sizeof(client_addr);
+//     memcpy(&last_client_addr, &client_addr, sizeof(client_addr));
+//     last_client_len = sizeof(client_addr);
 
-    while (1)
-    {
+//     while (1)
+//     {
 
-        // Build local bind address
-        if (addr_family == AF_INET)
-        {
-            struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
-            memset(dest_addr_ip4, 0, sizeof(struct sockaddr_in));
-            dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
-            dest_addr_ip4->sin_family = AF_INET;
-            dest_addr_ip4->sin_port = htons(local_port);
-            ip_protocol = IPPROTO_IP;
-        }
-        else
-        {
-            memset(&dest_addr, 0, sizeof(dest_addr));
-            dest_addr.sin6_family = AF_INET6;
-            dest_addr.sin6_port = htons(local_port);
-            ip_protocol = IPPROTO_IPV6;
-        }
+//         // Build local bind address
+//         if (addr_family == AF_INET)
+//         {
+//             struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
+//             memset(dest_addr_ip4, 0, sizeof(struct sockaddr_in));
+//             dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
+//             dest_addr_ip4->sin_family = AF_INET;
+//             dest_addr_ip4->sin_port = htons(local_port);
+//             ip_protocol = IPPROTO_IP;
+//         }
+//         else
+//         {
+//             memset(&dest_addr, 0, sizeof(dest_addr));
+//             dest_addr.sin6_family = AF_INET6;
+//             dest_addr.sin6_port = htons(local_port);
+//             ip_protocol = IPPROTO_IPV6;
+//         }
 
-        sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
-        if (sock < 0)
-        {
-            ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-            break;
-        }
+//         sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
+//         if (sock < 0)
+//         {
+//             ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
+//             break;
+//         }
 
-        ESP_LOGI(TAG, "Socket created");
+//         ESP_LOGI(TAG, "Socket created");
 
-        // struct timeval timeout = {.tv_sec = 10, .tv_usec = 0};
-        // setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+//         // struct timeval timeout = {.tv_sec = 10, .tv_usec = 0};
+//         // setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
-        int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        if (err < 0)
-        {
-            ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
-        }
+//         int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+//         if (err < 0)
+//         {
+//             ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
+//         }
 
-        ESP_LOGI(TAG, "Socket bound, port %d", local_port);
+//         ESP_LOGI(TAG, "Socket bound, port %d", local_port);
 
-        struct sockaddr_storage source_addr;
-        socklen_t socklen = sizeof(source_addr);
+//         struct sockaddr_storage source_addr;
+//         socklen_t socklen = sizeof(source_addr);
 
-        while (1)
-        {
-            ESP_LOGI(TAG, "Waiting for data");
+//         while (1)
+//         {
+//             ESP_LOGI(TAG, "Waiting for data");
 
-            int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0,
-                               (struct sockaddr *)&source_addr, &socklen);
+//             int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0,
+//                                (struct sockaddr *)&source_addr, &socklen);
 
-            if (len < 0)
-            {
-                ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
-                break;
-            }
+//             if (len < 0)
+//             {
+//                 ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
+//                 break;
+//             }
 
-            // Convert sender IP only for logging
-            if (source_addr.ss_family == PF_INET)
-            {
-                inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr,
-                            addr_str, sizeof(addr_str));
-            }
-            else
-            {
-                inet6_ntoa_r(((struct sockaddr_in6 *)&source_addr)->sin6_addr,
-                             addr_str, sizeof(addr_str));
-            }
+//             // Convert sender IP only for logging
+//             if (source_addr.ss_family == PF_INET)
+//             {
+//                 inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr,
+//                             addr_str, sizeof(addr_str));
+//             }
+//             else
+//             {
+//                 inet6_ntoa_r(((struct sockaddr_in6 *)&source_addr)->sin6_addr,
+//                              addr_str, sizeof(addr_str));
+//             }
 
-            rx_buffer[len] = 0;
-            ESP_LOGI(TAG, "Received %d bytes from %s:", len, addr_str);
-            ESP_LOGI(TAG, "%s", rx_buffer);
+//             rx_buffer[len] = 0;
+//             ESP_LOGI(TAG, "Received %d bytes from %s:", len, addr_str);
+//             ESP_LOGI(TAG, "%s", rx_buffer);
 
-            // Process OSC
-            OscPacket oscPacket;
-            OscPacketInitialiseFromCharArray(&oscPacket, rx_buffer, len);
-            oscPacket.processMessage = ProcessMessage;
-            OscPacketProcessMessages(&oscPacket);
-        }
+//             // Process OSC
+//             OscPacket oscPacket;
+//             OscPacketInitialiseFromCharArray(&oscPacket, rx_buffer, len);
+//             oscPacket.processMessage = ProcessMessage;
+//             OscPacketProcessMessages(&oscPacket);
+//         }
 
-        shutdown(sock, 0);
-        close(sock);
-    }
+//         shutdown(sock, 0);
+//         close(sock);
+//     }
 
-    vTaskDelete(NULL);
-}
+//     vTaskDelete(NULL);
+// }
 
-void udp_send_osc(OscPacket msg)
-{
-    if (sock < 0)
-    {
-        ESP_LOGE("UDP_Send", "Socket not initialized");
-        return;
-    }
+// void udp_send_osc(OscPacket msg)
+// {
+//     if (sock < 0)
+//     {
+//         ESP_LOGE("UDP_Send", "Socket not initialized");
+//         return;
+//     }
 
-    const struct sockaddr_in dest_addr = {
-        .sin_family = AF_INET,
-        .sin_port = htons(nvs_global.osc_settings.remote_port),
-        .sin_addr.s_addr = inet_addr(nvs_global.osc_settings.remote_ip),
-    };
+//     const struct sockaddr_in dest_addr = {
+//         .sin_family = AF_INET,
+//         .sin_port = htons(nvs_global.osc_settings.remote_port),
+//         .sin_addr.s_addr = inet_addr(nvs_global.osc_settings.remote_ip),
+//     };
 
-    int err = sendto(
-        sock,
-        msg.contents,
-        msg.size,
-        0,
-        (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+//     int err = sendto(
+//         sock,
+//         msg.contents,
+//         msg.size,
+//         0,
+//         (struct sockaddr *)&dest_addr, sizeof(dest_addr));
 
-    if (err < 0)
-    {
-        // ESP_LOGE("UDP_SEND", "Send failed: errno %d", errno);
-        // ESP_LOGI("UDP_SEND", "free_heap=%u", esp_get_free_heap_size());
-    }
-    else
-    {
-        // ESP_LOGI(TAG, "Sent: %s", msg);
-    }
-}
+//     if (err < 0)
+//     {
+//         // ESP_LOGE("UDP_SEND", "Send failed: errno %d", errno);
+//         // ESP_LOGI("UDP_SEND", "free_heap=%u", esp_get_free_heap_size());
+//     }
+//     else
+//     {
+//         // ESP_LOGI(TAG, "Sent: %s", msg);
+//     }
+// }
 
 // OSC
 void sendOscContents(const void *const oscContents)
@@ -971,7 +971,7 @@ void sendOscContents(const void *const oscContents)
     {
         return;
     }
-    udp_send_osc(OscPacket);
+    udp_send_osc(&OscPacket.contents,OscPacket.size);
 }
 
 void sendPingMessage()
@@ -1248,7 +1248,7 @@ void app_main(void)
     (void)server;
 
     // Spawns the UDP recive Server that handles all Remote -> x-osc2 messages
-    xTaskCreate(udp_server_task, "udp_server", 12288, (void *)AF_INET, 5, NULL);
+    
 
     // xTaskCreate(throughput_test, "TT", 8192, NULL, 5, NULL);
 
