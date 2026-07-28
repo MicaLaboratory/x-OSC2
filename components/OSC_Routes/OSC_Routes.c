@@ -88,7 +88,7 @@ void handleLocalPort(OscMessage *msg, const int channel, NVS_Global *ctx)
     ESP_LOGI("OSC", "Set local port");
 
     int32_t new_port;
-    OscError err = OscMessageGetArgumentAsInt32(msg, (void *)new_port);
+    OscError err = OscMessageGetArgumentAsInt32(msg, &new_port);
     if (err != OscErrorNone)
     {
         ESP_LOGE("OSC", "Failed to get osc contents");
@@ -132,17 +132,14 @@ void handleInputModeAnalogue(OscMessage *msg, const int channel, NVS_Global *ctx
         return;
     }
 
-    char NVS_Name_Buffer[64];
+    const int idx = channel - 1;
+    ctx->gpio_settings.pin_mode[idx] = (level != 0) ? GPIO_ANALOGUE : GPIO_OFF;
 
-    if (level != 0)
+    esp_err_t save_err = nvs_save_gpio_modes(ctx->gpio_settings.pin_mode);
+    if (save_err != ESP_OK)
     {
-        snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
-        // ESP_ERROR_CHECK(nvs_save_value("Pins", NVS_Name_Buffer, NVS_TYPE_I32, GPIO_ANALOGUE));
-        // nvs_update(ctx,)
+        ESP_LOGE("OSC", "Failed to persist pin config: %s", esp_err_to_name(save_err));
     }
-
-    snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
-    // ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
 }
 
 void handleInputModeDigital(OscMessage *msg, const int channel, NVS_Global *ctx)
@@ -158,16 +155,14 @@ void handleInputModeDigital(OscMessage *msg, const int channel, NVS_Global *ctx)
         return;
     }
 
-    char NVS_Name_Buffer[64];
+    const int idx = channel - 1;
+    ctx->gpio_settings.pin_mode[idx] = (level != 0) ? GPIO_DIGITAL : GPIO_OFF;
 
-    if (level != 0)
+    esp_err_t save_err = nvs_save_gpio_modes(ctx->gpio_settings.pin_mode);
+    if (save_err != ESP_OK)
     {
-        snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
-        // ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_DIGITAL));
+        ESP_LOGE("OSC", "Failed to persist pin config: %s", esp_err_to_name(save_err));
     }
-
-    snprintf(NVS_Name_Buffer, sizeof(NVS_Name_Buffer), "Pin-%d-PType", gpio);
-    // ESP_ERROR_CHECK(nvs_save_int("Pins", NVS_Name_Buffer, GPIO_OFF));
 }
 
 void handleInputModeSerial(OscMessage *msg, const int channel, NVS_Global *ctx)
