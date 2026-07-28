@@ -7,7 +7,6 @@
 #include "driver/gpio.h"
 #include "led_strip.h"
 
-
 static led_strip_handle_t led_strip;
 
 static void configure_led(void)
@@ -61,7 +60,7 @@ void handleRemoteIp(OscMessage *msg, const int channel, NVS_Global *ctx)
     }
 
     // ESP_ERROR_CHECK(nvs_save_str("OSC", "Remote_IP", new_ip));
-    nvs_update(ctx,"osc_settings.remote_ip",&new_ip);
+    nvs_update(ctx, "osc_settings.remote_ip", &new_ip);
 
     ESP_LOGI("OSC", "Set remote IP Successfull");
 }
@@ -78,7 +77,7 @@ void handleRemotePort(OscMessage *msg, const int channel, NVS_Global *ctx)
     }
 
     // ESP_ERROR_CHECK(nvs_save_int("OSC", "Remote_Port", new_port));
-    nvs_update(ctx,"osc_settings.remote_port",&new_port);
+    nvs_update(ctx, "osc_settings.remote_port", &new_port);
 
     ESP_LOGI("OSC", "Remote port set successfully");
 }
@@ -96,7 +95,7 @@ void handleLocalPort(OscMessage *msg, const int channel, NVS_Global *ctx)
     }
 
     // ESP_ERROR_CHECK(nvs_save_int("OSC", "Local_Port", new_port));
-    nvs_update(ctx,"osc_settings.local_port",&new_port);
+    nvs_update(ctx, "osc_settings.local_port", &new_port);
 
     ESP_LOGI("OSC", "Local port set successfully");
     // To push port change
@@ -123,7 +122,6 @@ void handleInputModeAnalogue(OscMessage *msg, const int channel, NVS_Global *ctx
 {
     ESP_LOGI("OSC", "Set analogue input mode ch=%d", channel);
 
-    const int gpio = channel;
     // Extract integer argument
     int32_t level;
     OscError err = OscMessageGetArgumentAsInt32(msg, &level);
@@ -145,8 +143,7 @@ void handleInputModeAnalogue(OscMessage *msg, const int channel, NVS_Global *ctx
 void handleInputModeDigital(OscMessage *msg, const int channel, NVS_Global *ctx)
 {
     ESP_LOGI("OSC", "Set digital input mode ch=%d", channel);
-    
-    const int gpio = channel;
+
     // Extract integer argument
     int32_t level;
     OscError err = OscMessageGetArgumentAsInt32(msg, &level);
@@ -191,8 +188,7 @@ void handleAnalogueRate(OscMessage *msg, const int channel, NVS_Global *ctx)
         return;
     }
     // ESP_ERROR_CHECK(nvs_save_int("GPIO", "Rate", New_Rate));
-    nvs_update(ctx,"gpio_settings.gpio_rate",&New_Rate);
-
+    nvs_update(ctx, "gpio_settings.gpio_rate", &New_Rate);
 }
 
 void handleAnalogueComparatorRead(OscMessage *msg, const int channel, NVS_Global *ctx)
@@ -224,24 +220,11 @@ void handleDigitalUp(OscMessage *msg, const int channel, NVS_Global *ctx)
         return;
     }
 
-    if (level != 0)
-    {
-        // Configure pin
-        gpio_config_t cfg = {
-            .pin_bit_mask = 1ULL << gpio,
-            .mode = GPIO_MODE_INPUT_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_ENABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        };
-        gpio_config(&cfg);
-        return;
-    }
-
     // Configure pin
     gpio_config_t cfg = {
         .pin_bit_mask = 1ULL << gpio,
         .mode = GPIO_MODE_INPUT_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_up_en = (level != 0) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
     };
     gpio_config(&cfg);
@@ -261,25 +244,11 @@ void handleDigitalDown(OscMessage *msg, const int channel, NVS_Global *ctx)
     }
 
     // Configure pin
-    if (level != 0)
-    {
-        // Configure pin
-        gpio_config_t cfg = {
-            .pin_bit_mask = 1ULL << gpio,
-            .mode = GPIO_MODE_INPUT_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_ENABLE,
-        };
-        gpio_config(&cfg);
-        return;
-    }
-
-    // Configure pin
     gpio_config_t cfg = {
         .pin_bit_mask = 1ULL << gpio,
         .mode = GPIO_MODE_INPUT_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_down_en = (level != 0) ? GPIO_PULLDOWN_ENABLE : GPIO_PULLDOWN_DISABLE,
     };
     gpio_config(&cfg);
 }

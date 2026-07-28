@@ -458,7 +458,7 @@ esp_err_t nvs_save_gpio_pins(const GPIO_State *modes, const GPIO_IO *ios)
         return err;
     }
 
-    err = nvs_save_gpio_modes(ios);
+    err = nvs_save_gpio_ios(ios);
     return err;
 }
 esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO_State *default_modes, const GPIO_IO *default_ios)
