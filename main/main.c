@@ -88,8 +88,7 @@
 /* AP Configuration */
 #define EXAMPLE_ESP_WIFI_AP_SSID CONFIG_ESP_WIFI_AP_SSID
 #define EXAMPLE_ESP_WIFI_AP_PASSWD CONFIG_ESP_WIFI_AP_PASSWORD
-#define EXAMPLE_ESP_WIFI_CHANNEL CONFIG_ESP_WIFI_AP_CHANNEL
-#define EXAMPLE_MAX_STA_CONN CONFIG_ESP_MAX_STA_CONN_AP
+
 
 /* The event group allows multiple bits for each event, but we only care about two events:
  * - we are connected to the AP with an IP
@@ -239,82 +238,71 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 }
 
 /* Initialize soft AP */
-void wifi_init_softap(void)
-{
-    wifi_config_t wifi_ap_config = {0}; // zero-initialise
+void wifi_init_softap(void){}
+// {
+//     wifi_config_t wifi_ap_config = {0}; // zero-initialise
 
-    // Copy SSID (max 32 bytes)
-    size_t ssid_len = strlen(nvs_global.net_settings.ap_ssid);
-    if (ssid_len > 32)
-        ssid_len = 32;
+//     // Copy SSID (max 32 bytes)
+//     size_t ssid_len = strlen(nvs_global.net_settings.ap_ssid);
+//     if (ssid_len > 32)
+//         ssid_len = 32;
 
-    memcpy(wifi_ap_config.ap.ssid, nvs_global.net_settings.ap_ssid, ssid_len);
-    wifi_ap_config.ap.ssid_len = ssid_len;
+//     memcpy(wifi_ap_config.ap.ssid, nvs_global.net_settings.ap_ssid, ssid_len);
+//     wifi_ap_config.ap.ssid_len = ssid_len;
 
-    // Copy password (max 64 bytes)
-    size_t pass_len = strlen(nvs_global.net_settings.ap_password);
-    if (pass_len > 64)
-        pass_len = 64;
+//     // Copy password (max 64 bytes)
+//     size_t pass_len = strlen(nvs_global.net_settings.ap_password);
+//     if (pass_len > 64)
+//         pass_len = 64;
 
-    memcpy(wifi_ap_config.ap.password, nvs_global.net_settings.ap_password, pass_len);
+//     memcpy(wifi_ap_config.ap.password, nvs_global.net_settings.ap_password, pass_len);
 
-    // Other AP settings
-    wifi_ap_config.ap.channel = EXAMPLE_ESP_WIFI_CHANNEL;
-    wifi_ap_config.ap.max_connection = EXAMPLE_MAX_STA_CONN;
-    wifi_ap_config.ap.authmode = (pass_len == 0) ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
-    wifi_ap_config.ap.pmf_cfg.required = false;
+//     // Other AP settings
+//     wifi_ap_config.ap.channel = EXAMPLE_ESP_WIFI_CHANNEL;
+//     wifi_ap_config.ap.max_connection = EXAMPLE_MAX_STA_CONN;
+//     wifi_ap_config.ap.authmode = (pass_len == 0) ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
+//     wifi_ap_config.ap.pmf_cfg.required = false;
 
-    // Apply config
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
+//     // Apply config
+//     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
 
-    ESP_LOGI(TAG_AP, "SoftAP started. SSID:%s password:%s channel:%d",
-             nvs_global.net_settings.ap_ssid, nvs_global.net_settings.ap_password, EXAMPLE_ESP_WIFI_CHANNEL);
-}
+//     ESP_LOGI(TAG_AP, "SoftAP started. SSID:%s password:%s channel:%d",
+//              nvs_global.net_settings.ap_ssid, nvs_global.net_settings.ap_password, EXAMPLE_ESP_WIFI_CHANNEL);
+// }
 
 /* Initialize wifi station */
-void wifi_init_sta(void)
-{
+void wifi_init_sta(void){}
+// {
 
-    wifi_config_t wifi_sta_config = {
-        .sta = {
-            .scan_method = WIFI_ALL_CHANNEL_SCAN,
-            .failure_retry_cnt = CONFIG_ESP_MAXIMUM_STA_RETRY,
-            .threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
-            .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
-        },
-    };
+//     wifi_config_t wifi_sta_config = {
+//         .sta = {
+//             .scan_method = WIFI_ALL_CHANNEL_SCAN,
+//             .failure_retry_cnt = CONFIG_ESP_MAXIMUM_STA_RETRY,
+//             .threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
+//             .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
+//         },
+//     };
 
-    // Copy SSID (max 32 bytes)
-    size_t ssid_len = strlen(nvs_global.net_settings.sta_ssid);
-    if (ssid_len > 32)
-        ssid_len = 32;
-    memcpy(wifi_sta_config.sta.ssid, nvs_global.net_settings.sta_ssid, ssid_len);
+//     // Copy SSID (max 32 bytes)
+//     size_t ssid_len = strlen(nvs_global.net_settings.sta_ssid);
+//     if (ssid_len > 32)
+//         ssid_len = 32;
+//     memcpy(wifi_sta_config.sta.ssid, nvs_global.net_settings.sta_ssid, ssid_len);
 
-    // Copy password (max 64 bytes)
-    size_t pass_len = strlen(nvs_global.net_settings.sta_password);
-    if (pass_len > 64)
-        pass_len = 64;
-    memcpy(wifi_sta_config.sta.password, nvs_global.net_settings.sta_password, pass_len);
+//     // Copy password (max 64 bytes)
+//     size_t pass_len = strlen(nvs_global.net_settings.sta_password);
+//     if (pass_len > 64)
+//         pass_len = 64;
+//     memcpy(wifi_sta_config.sta.password, nvs_global.net_settings.sta_password, pass_len);
 
-    ESP_LOGE("SSID", "%s", nvs_global.net_settings.sta_ssid);
-    ESP_LOGE("PASS", "%s", nvs_global.net_settings.sta_password);
+//     ESP_LOGE("SSID", "%s", nvs_global.net_settings.sta_ssid);
+//     ESP_LOGE("PASS", "%s", nvs_global.net_settings.sta_password);
 
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config));
+//     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config));
 
-    ESP_LOGI(TAG_STA, "wifi_init_sta finished. SSID:%s PASS:%s",
-             nvs_global.net_settings.sta_ssid, nvs_global.net_settings.sta_password);
-}
-
-void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_netif_sta)
-{
-    esp_netif_dns_info_t dns;
-    esp_netif_get_dns_info(esp_netif_sta, ESP_NETIF_DNS_MAIN, &dns);
-    uint8_t dhcps_offer_option = DHCPS_OFFER_DNS;
-    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_stop(esp_netif_ap));
-    ESP_ERROR_CHECK(esp_netif_dhcps_option(esp_netif_ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &dhcps_offer_option, sizeof(dhcps_offer_option)));
-    ESP_ERROR_CHECK(esp_netif_set_dns_info(esp_netif_ap, ESP_NETIF_DNS_MAIN, &dns));
-    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(esp_netif_ap));
-}
+//     ESP_LOGI(TAG_STA, "wifi_init_sta finished. SSID:%s PASS:%s",
+//              nvs_global.net_settings.sta_ssid, nvs_global.net_settings.sta_password);
+// }
 
 
 
