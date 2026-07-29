@@ -32,7 +32,7 @@ static Osc_Settings_t nvs_osc;
 //------------------------------------------------------------------------------
 // Function declarations
 
-void networking_init(const Osc_Settings_t *cfg,const WirelessCallbacks *callbacks_);
+void networking_init(const Osc_Settings_t *cfg, const WirelessCallbacks *callbacks_);
 esp_err_t wifi_configure_softap(const NVS_Global *ctx, wifi_config_t *cfg);
 esp_err_t wifi_configure_station(const NVS_Global *ctx, wifi_config_t *cfg);
 static void nvs_osc_configure(const Osc_Settings_t *cfg);
@@ -42,7 +42,7 @@ int udp_send_osc(const char *contents, const size_t size);
 
 //------------------------------------------------------------------------------
 // Functions
-void networking_init(const Osc_Settings_t *cfg,const WirelessCallbacks *callbacks_)
+void networking_init(const Osc_Settings_t *cfg, const WirelessCallbacks *callbacks_)
 {
     nvs_osc_configure(cfg);
     callbacks = *callbacks_;
@@ -154,7 +154,7 @@ int udp_send_osc(const char *contents, const size_t size)
 {
     if (sock.handle < 0)
     {
-        // TODO - 
+        // TODO -
         // ESP_LOGE("UDP_Send", "Socket not initialized");
         return -1;
     }

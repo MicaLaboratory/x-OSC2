@@ -1,6 +1,14 @@
+/**
+ * @file OSC_Routes.h
+ * @author Ben Marples
+ */
+
+//------------------------------------------------------------------------------
 #ifndef OSC_ROUTES_H
 #define OSC_ROUTES_H
 
+//------------------------------------------------------------------------------
+// Includes
 #include <stdlib.h>
 #include <string.h>
 #include "OscError.h"
@@ -9,6 +17,8 @@
 #include "Osc99.h"
 #include "NVS_Helper_Funcs.h"
 
+//------------------------------------------------------------------------------
+// Structs
 typedef struct
 {
     const char *prefix;
@@ -16,11 +26,9 @@ typedef struct
     void (*handler)(OscMessage *msg, const int channel,  NVS_Global *ctx);
 } OscRoute;
 
-// typedef enum {
-//     GPIO_OFF,
-//     GPIO_ANALOGUE,
-//     GPIO_DIGITAL
-// }GPIO_CONV;
+
+//------------------------------------------------------------------------------
+// Function Definitions
 static inline int parseChannel(const char *addr, const char *prefix)
 {
     return atoi(addr + strlen(prefix));
@@ -80,6 +88,8 @@ void handleSerialFraming(OscMessage *msg, const int channel,  NVS_Global *ctx);
 
 void flashLedRed(void);
 
+//------------------------------------------------------------------------------
+// Routes/ Variables
 static const OscRoute ROUTES[] = {
 
     // Debug

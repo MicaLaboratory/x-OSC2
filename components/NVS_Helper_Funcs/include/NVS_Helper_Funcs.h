@@ -1,23 +1,27 @@
 
+/**
+ * @file NVS_Helper_Funcs.h
+ * @author Ben Marples
+ */
+
+//------------------------------------------------------------------------------
 #ifndef NVS_HELPER_H
 #define NVS_HELPER_H
 
+//------------------------------------------------------------------------------
+// Includes
 #include <stdint.h>
 #include "esp_err.h"
 #include "nvs.h"
 #include "sdkconfig.h"
 
+
+//------------------------------------------------------------------------------
+// Defines
 #define PINCOUNT CONFIG_PINCOUNT
 
-// typedef enum {
-//     NVS_TYPE_I32,
-//     NVS_TYPE_U32,
-//     NVS_TYPE_I8,
-//     NVS_TYPE_U8,
-//     NVS_TYPE_STR,
-//     NVS_TYPE_BLOB
-// } nvs_value_type_t;
-
+//------------------------------------------------------------------------------
+// Structs 
 typedef struct
 {
     const void *data;
@@ -97,6 +101,8 @@ typedef struct
     FieldType type;
 } FieldDesc;
 
+//------------------------------------------------------------------------------
+// Functions
 void print_all_nvs_entries(const char *namespace);
 
 esp_err_t nvs_update(NVS_Global *nvs, const char *field_name, const void *value);

@@ -1,14 +1,24 @@
+/**
+ * @file OSC_Routes.c
+ * @author Ben Marples
+ */
+
+//------------------------------------------------------------------------------
+// Includes
 #include <stdio.h>
 #include "OSC_Routes.h"
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "led_strip.h"
 
+//------------------------------------------------------------------------------
+// Variables
 static led_strip_handle_t led_strip;
 
+//------------------------------------------------------------------------------
+// LED Flashing
 static void configure_led(void)
 {
     /* LED strip initialization with the GPIO and pixels number*/

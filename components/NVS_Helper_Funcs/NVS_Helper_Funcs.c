@@ -1,10 +1,15 @@
+/**
+ * @file NVS_Helper_Funcs.c
+ * @author Ben Marples
+ */
+
+//------------------------------------------------------------------------------
+// Includes
 #include <stdio.h>
 #include <inttypes.h> // for PRId32
 #include "NVS_Helper_Funcs.h"
 
 #include "esp_log.h"
-
-// #include "../../main/global_nvs.h"
 
 #include "NVS_Helper_Funcs.h"
 #include <stdbool.h>
@@ -12,6 +17,7 @@
 #include <string.h>
 #include "esp_err.h"
 
+// Variables
 static const FieldDesc g_fields[] = {
     {"net_settings.network_mode", "net_settings", "network_mode",
      offsetof(NVS_Global, net_settings.network_mode),
@@ -74,7 +80,8 @@ static const FieldDesc g_fields[] = {
      FIELD_U32},
 };
 
-// Functions
+//------------------------------------------------------------------------------
+// Function Definitions
 
 esp_err_t nvs_update(NVS_Global *nvs, const char *field_name, const void *value);
 esp_err_t nvs_populate_value(NVS_Global *nvs, const char *field_name, const void *default_value);
@@ -83,7 +90,9 @@ esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_type_t
 esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType type, const void *default_value, void *out_value);
 esp_err_t nvs_save_gpio_pins(const GPIO_State *modes, const GPIO_IO *ios);
 esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO_State *default_modes, const GPIO_IO *default_ios);
-//
+
+//------------------------------------------------------------------------------
+// Function Implementations
 
 static inline const void *get_default_value(const NVS_Global *defaults, const FieldDesc *fd)
 {
@@ -461,14 +470,16 @@ esp_err_t nvs_save_gpio_pins(const GPIO_State *modes, const GPIO_IO *ios)
     err = nvs_save_gpio_ios(ios);
     return err;
 }
+
 esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO_State *default_modes, const GPIO_IO *default_ios)
 {
-    esp_err_t err = nvs_load_gpio_modes(out_modes,default_modes);
-    if (err != ESP_OK) {
+    esp_err_t err = nvs_load_gpio_modes(out_modes, default_modes);
+    if (err != ESP_OK)
+    {
         return err;
     }
 
-    err = nvs_load_gpio_ios(out_ios,default_ios);
+    err = nvs_load_gpio_ios(out_ios, default_ios);
     return err;
 }
 

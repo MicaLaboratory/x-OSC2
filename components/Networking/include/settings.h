@@ -1,3 +1,9 @@
+/**
+ * @file settings.h
+ * @author Ben Marples
+ */
+
+//------------------------------------------------------------------------------
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
