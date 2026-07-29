@@ -454,13 +454,13 @@ static esp_err_t gpio_json_handler(httpd_req_t *req)
 
     offset += snprintf(json + offset, sizeof(json) - offset, "{ \"pins\": {");
 
-    for (int i = 1; i <= 28; i++)
+    for (int i = 1; i <= PINCOUNT; i++)
     {
         // Append JSON entry
         offset += snprintf(json + offset, sizeof(json) - offset,
                            "\"%d\": {\"mode\": %d, \"io\": %d}%s",
                            i, nvs_global.gpio_settings.pin_mode[i - 1], nvs_global.gpio_settings.pin_io[i - 1],
-                           (i < 28 ? "," : ""));
+                           (i < PINCOUNT ? "," : ""));
     }
 
     offset += snprintf(json + offset, sizeof(json) - offset, "} }");
