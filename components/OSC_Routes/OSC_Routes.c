@@ -31,7 +31,6 @@ void flashLedRed(void)
     {
         ESP_LOGE("OSC", "flashLedRed called but LED strip is not initialized");
         configure_led();
-        return;
     }
     led_strip_set_pixel(led_strip, 0, 0, 255, 0);
     led_strip_refresh(led_strip);
