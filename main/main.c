@@ -8,7 +8,6 @@
 #include "esp_err.h"
 #include "nvs_flash.h"
 #include "nvs.h"
-// #include "main.h"
 
 #include "esp_system.h"
 #include "driver/gpio.h"
@@ -52,10 +51,8 @@
 
 #include "esp_log.h"
 
-// #include "global_nvs.h"
 #include "NVS_Helper_Funcs.h"
 #include "Networking.h"
-
 
 #define PINCOUNT CONFIG_PINCOUNT
 #define MAX_ATTEMPS 10
@@ -85,7 +82,6 @@
  * - we failed to connect after the maximum amount of retries */
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
-
 
 static const char *TAG_AP = "WiFi SoftAP";
 static const char *TAG_STA = "WiFi Sta";
@@ -236,7 +232,6 @@ static esp_err_t base_handler(httpd_req_t *req)
 
 static esp_err_t Conf_Reset(httpd_req_t *req)
 {
-    // ESP_ERROR_CHECK(nvs_save_int("Config", "Network", -1));
     uint32_t mode = AP_MODE_END;
     ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.network_mode", &mode));
 
@@ -430,7 +425,6 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
         ESP_LOGE("GPIO_Handler", "Failed to persist pin config: %s", esp_err_to_name(err));
     }
 
-
     // --- Respond so browser stops loading ---
     httpd_resp_set_type(req, "text/plain");
     httpd_resp_send(req, "GPIO Saved", HTTPD_RESP_USE_STRLEN);
@@ -580,8 +574,6 @@ httpd_handle_t start_webserver()
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
-    // config.lru_purge_enable = true;
-
     if (httpd_start(&server, &config) == ESP_OK)
     {
 
@@ -726,7 +718,8 @@ static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const
 }
 
 // OSC
-void received(const void *const data, const size_t number_of_bytes){
+void received(const void *const data, const size_t number_of_bytes)
+{
     // Process OSC
     OscPacket oscPacket;
     OscPacketInitialiseFromCharArray(&oscPacket, data, number_of_bytes);
@@ -737,12 +730,12 @@ void received(const void *const data, const size_t number_of_bytes){
 static OscError sendOscContents(const void *const oscContents)
 {
     OscPacket OscPacket;
-    OscError err = OscPacketInitialiseFromContents(&OscPacket, oscContents); 
+    OscError err = OscPacketInitialiseFromContents(&OscPacket, oscContents);
     if (err != OscErrorNone)
     {
         return err;
     }
-    udp_send_osc(OscPacket.contents,OscPacket.size);
+    udp_send_osc(OscPacket.contents, OscPacket.size);
     return OscErrorNone;
 }
 
@@ -909,7 +902,7 @@ void app_main(void)
     flashLedRed();
 
     // Loads the Current Network Mode
-    uint32_t network_mode_default = AP_MODE_END; // pick your actual desired default
+    uint32_t network_mode_default = AP_MODE_END; 
     uint32_t network_mode = 0;
     esp_err_t err = nvs_load_value("net_settings", "network_mode", FIELD_ENUM, &network_mode_default, &network_mode);
     ESP_LOGE("NVS_LOAD", "%s", esp_err_to_name(err));
@@ -957,7 +950,6 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
 
-
     esp_err_t network_err = ESP_OK;
     switch (network_mode)
     {
@@ -981,9 +973,8 @@ void app_main(void)
 
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_LOGI(TAG_STA, "ESP_WIFI_MODE_STA");
-        
-        
-        network_err =  wifi_configure_station(&nvs_global, &net_cfg);
+
+        network_err = wifi_configure_station(&nvs_global, &net_cfg);
         ESP_ERROR_CHECK(esp_wifi_start());
 
         EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
@@ -1015,8 +1006,7 @@ void app_main(void)
     WirelessCallbacks cb = {
         .received = received,
     };
-    networking_init(&nvs_global.osc_settings,&cb);
-    
+    networking_init(&nvs_global.osc_settings, &cb);
 
     // Allows for analogue pin reads
     adc_init();
