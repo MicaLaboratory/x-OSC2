@@ -19,9 +19,6 @@ typedef enum
 void networking_init(const Osc_Settings_t *cfg,const WirelessCallbacks *callbacks_);
 esp_err_t wifi_configure_softap(const NVS_Global *ctx, wifi_config_t *cfg);
 esp_err_t wifi_configure_station(const NVS_Global *ctx, wifi_config_t *cfg);
-static void nvs_osc_configure(const Osc_Settings_t *cfg);
-static socket_err socket_init();
-static void receive_task(void *pvParameters);
 int udp_send_osc(const char *contents, const size_t size);
 
 #endif 
