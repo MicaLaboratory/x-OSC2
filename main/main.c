@@ -1015,8 +1015,10 @@ void app_main(void)
     (void)server;
 
     // Spawns the recive Server that handles all remote -> x-osc2 messages + makes socket
-
-    networking_init(&nvs_global.osc_settings,);
+    WirelessCallbacks cb = {
+        .received = received,
+    };
+    networking_init(&nvs_global.osc_settings,&cb);
     
 
     // Allows for analogue pin reads
