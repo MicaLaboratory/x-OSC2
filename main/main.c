@@ -755,7 +755,8 @@ static OscError sendOscContents(const void *const oscContents)
     {
         return err;
     }
-    int send_err = udp_send_osc(&OscPacket.contents,OscPacket.size);
+    udp_send_osc(OscPacket.contents,OscPacket.size);
+    return OscErrorNone;
 }
 
 void sendPingMessage()
@@ -979,7 +980,7 @@ void app_main(void)
         wifi_config_t cfg = {
 
         };
-        esp_err_t err = wifi_configure_softap(nvs_global, &cfg);
+        esp_err_t err = wifi_configure_softap(&nvs_global, &cfg);
         ESP_ERROR_CHECK(esp_wifi_start());
 
         // No event group wait here
@@ -998,7 +999,7 @@ void app_main(void)
         wifi_config_t cfg = {
 
         };
-        esp_err_t err =  wifi_configure_station(nvs, wifi_config_t *cfg);
+        esp_err_t err =  wifi_configure_station(&nvs_global, &cfg);
         ESP_ERROR_CHECK(esp_wifi_start());
 
         EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
