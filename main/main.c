@@ -8,7 +8,6 @@
 #include "esp_err.h"
 #include "nvs_flash.h"
 #include "nvs.h"
-// #include "main.h"
 
 #include "esp_system.h"
 #include "driver/gpio.h"
@@ -52,15 +51,8 @@
 
 #include "esp_log.h"
 
-// #include "global_nvs.h"
 #include "NVS_Helper_Funcs.h"
-
-// typedef enum
-// {
-//     AP = 1,
-//     STA,
-//     AP_MODE_END
-// } AP_Mode;
+#include "Networking.h"
 
 #define PINCOUNT CONFIG_PINCOUNT
 #define MAX_ATTEMPS 10
@@ -85,20 +77,11 @@
 
 #define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
 
-/* AP Configuration */
-#define EXAMPLE_ESP_WIFI_AP_SSID CONFIG_ESP_WIFI_AP_SSID
-#define EXAMPLE_ESP_WIFI_AP_PASSWD CONFIG_ESP_WIFI_AP_PASSWORD
-#define EXAMPLE_ESP_WIFI_CHANNEL CONFIG_ESP_WIFI_AP_CHANNEL
-#define EXAMPLE_MAX_STA_CONN CONFIG_ESP_MAX_STA_CONN_AP
-
 /* The event group allows multiple bits for each event, but we only care about two events:
  * - we are connected to the AP with an IP
  * - we failed to connect after the maximum amount of retries */
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
-
-/*DHCP server option*/
-#define DHCPS_OFFER_DNS 0x02
 
 static const char *TAG_AP = "WiFi SoftAP";
 static const char *TAG_STA = "WiFi Sta";
@@ -238,86 +221,6 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     }
 }
 
-/* Initialize soft AP */
-void wifi_init_softap(void)
-{
-    wifi_config_t wifi_ap_config = {0}; // zero-initialise
-
-    // Copy SSID (max 32 bytes)
-    size_t ssid_len = strlen(nvs_global.net_settings.ap_ssid);
-    if (ssid_len > 32)
-        ssid_len = 32;
-
-    memcpy(wifi_ap_config.ap.ssid, nvs_global.net_settings.ap_ssid, ssid_len);
-    wifi_ap_config.ap.ssid_len = ssid_len;
-
-    // Copy password (max 64 bytes)
-    size_t pass_len = strlen(nvs_global.net_settings.ap_password);
-    if (pass_len > 64)
-        pass_len = 64;
-
-    memcpy(wifi_ap_config.ap.password, nvs_global.net_settings.ap_password, pass_len);
-
-    // Other AP settings
-    wifi_ap_config.ap.channel = EXAMPLE_ESP_WIFI_CHANNEL;
-    wifi_ap_config.ap.max_connection = EXAMPLE_MAX_STA_CONN;
-    wifi_ap_config.ap.authmode = (pass_len == 0) ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
-    wifi_ap_config.ap.pmf_cfg.required = false;
-
-    // Apply config
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
-
-    ESP_LOGI(TAG_AP, "SoftAP started. SSID:%s password:%s channel:%d",
-             nvs_global.net_settings.ap_ssid, nvs_global.net_settings.ap_password, EXAMPLE_ESP_WIFI_CHANNEL);
-}
-
-/* Initialize wifi station */
-void wifi_init_sta(void)
-{
-
-    wifi_config_t wifi_sta_config = {
-        .sta = {
-            .scan_method = WIFI_ALL_CHANNEL_SCAN,
-            .failure_retry_cnt = CONFIG_ESP_MAXIMUM_STA_RETRY,
-            .threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
-            .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
-        },
-    };
-
-    // Copy SSID (max 32 bytes)
-    size_t ssid_len = strlen(nvs_global.net_settings.sta_ssid);
-    if (ssid_len > 32)
-        ssid_len = 32;
-    memcpy(wifi_sta_config.sta.ssid, nvs_global.net_settings.sta_ssid, ssid_len);
-
-    // Copy password (max 64 bytes)
-    size_t pass_len = strlen(nvs_global.net_settings.sta_password);
-    if (pass_len > 64)
-        pass_len = 64;
-    memcpy(wifi_sta_config.sta.password, nvs_global.net_settings.sta_password, pass_len);
-
-    ESP_LOGE("SSID", "%s", nvs_global.net_settings.sta_ssid);
-    ESP_LOGE("PASS", "%s", nvs_global.net_settings.sta_password);
-
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config));
-
-    ESP_LOGI(TAG_STA, "wifi_init_sta finished. SSID:%s PASS:%s",
-             nvs_global.net_settings.sta_ssid, nvs_global.net_settings.sta_password);
-}
-
-void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_netif_sta)
-{
-    esp_netif_dns_info_t dns;
-    esp_netif_get_dns_info(esp_netif_sta, ESP_NETIF_DNS_MAIN, &dns);
-    uint8_t dhcps_offer_option = DHCPS_OFFER_DNS;
-    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_stop(esp_netif_ap));
-    ESP_ERROR_CHECK(esp_netif_dhcps_option(esp_netif_ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &dhcps_offer_option, sizeof(dhcps_offer_option)));
-    ESP_ERROR_CHECK(esp_netif_set_dns_info(esp_netif_ap, ESP_NETIF_DNS_MAIN, &dns));
-    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(esp_netif_ap));
-}
-
-
-
 /* An HTTP GET handler */
 static esp_err_t base_handler(httpd_req_t *req)
 {
@@ -329,7 +232,6 @@ static esp_err_t base_handler(httpd_req_t *req)
 
 static esp_err_t Conf_Reset(httpd_req_t *req)
 {
-    // ESP_ERROR_CHECK(nvs_save_int("Config", "Network", -1));
     uint32_t mode = AP_MODE_END;
     ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.network_mode", &mode));
 
@@ -523,7 +425,6 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
         ESP_LOGE("GPIO_Handler", "Failed to persist pin config: %s", esp_err_to_name(err));
     }
 
-
     // --- Respond so browser stops loading ---
     httpd_resp_set_type(req, "text/plain");
     httpd_resp_send(req, "GPIO Saved", HTTPD_RESP_USE_STRLEN);
@@ -541,13 +442,13 @@ static esp_err_t gpio_json_handler(httpd_req_t *req)
 
     offset += snprintf(json + offset, sizeof(json) - offset, "{ \"pins\": {");
 
-    for (int i = 1; i <= 28; i++)
+    for (int i = 1; i <= PINCOUNT; i++)
     {
         // Append JSON entry
         offset += snprintf(json + offset, sizeof(json) - offset,
                            "\"%d\": {\"mode\": %d, \"io\": %d}%s",
                            i, nvs_global.gpio_settings.pin_mode[i - 1], nvs_global.gpio_settings.pin_io[i - 1],
-                           (i < 28 ? "," : ""));
+                           (i < PINCOUNT ? "," : ""));
     }
 
     offset += snprintf(json + offset, sizeof(json) - offset, "} }");
@@ -673,8 +574,6 @@ httpd_handle_t start_webserver()
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
-    // config.lru_purge_enable = true;
-
     if (httpd_start(&server, &config) == ESP_OK)
     {
 
@@ -764,7 +663,7 @@ static int parseChannelValidated(const char *addr, const char *prefix, const int
     return ch;
 }
 
-void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage)
+static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
     if (addr == NULL)
@@ -818,172 +717,26 @@ void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMes
     flashLedRed();
 }
 
-/* UDP socket tests */
-
-static int sock = -1;
-static struct sockaddr_storage last_client_addr;
-static socklen_t last_client_len = 0;
-
-static void udp_server_task(void *pvParameters)
-{
-    const char *TAG = "UDP Server";
-    char rx_buffer[128];
-    char addr_str[128];
-    int addr_family = (int)pvParameters;
-    int ip_protocol = 0;
-    struct sockaddr_in6 dest_addr;
-
-    // Load local bind port from NVS
-    const int32_t local_port = nvs_global.osc_settings.local_port;
-
-    // Load remote IP + port from NVS (used for sending)
-    // char *remote_ip = nvs_global.osc_settings.remote_ip;
-    const int32_t remote_port = nvs_global.osc_settings.remote_port;
-
-    // Build last_client_addr from NVS values (IPv4 only)
-    struct sockaddr_in client_addr;
-    memset(&client_addr, 0, sizeof(client_addr));
-    client_addr.sin_family = AF_INET;
-    client_addr.sin_port = htons(remote_port);
-
-    if (inet_aton(nvs_global.osc_settings.remote_ip, &client_addr.sin_addr) == 0)
-    {
-        ESP_LOGE(TAG, "Invalid Remote_IP in NVS: %s", nvs_global.osc_settings.remote_ip);
-    }
-
-    // free(nvs_global.osc_settings.remote_ip);
-
-    memcpy(&last_client_addr, &client_addr, sizeof(client_addr));
-    last_client_len = sizeof(client_addr);
-
-    while (1)
-    {
-
-        // Build local bind address
-        if (addr_family == AF_INET)
-        {
-            struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
-            memset(dest_addr_ip4, 0, sizeof(struct sockaddr_in));
-            dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
-            dest_addr_ip4->sin_family = AF_INET;
-            dest_addr_ip4->sin_port = htons(local_port);
-            ip_protocol = IPPROTO_IP;
-        }
-        else
-        {
-            memset(&dest_addr, 0, sizeof(dest_addr));
-            dest_addr.sin6_family = AF_INET6;
-            dest_addr.sin6_port = htons(local_port);
-            ip_protocol = IPPROTO_IPV6;
-        }
-
-        sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
-        if (sock < 0)
-        {
-            ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-            break;
-        }
-
-        ESP_LOGI(TAG, "Socket created");
-
-        // struct timeval timeout = {.tv_sec = 10, .tv_usec = 0};
-        // setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-
-        int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        if (err < 0)
-        {
-            ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
-        }
-
-        ESP_LOGI(TAG, "Socket bound, port %d", local_port);
-
-        struct sockaddr_storage source_addr;
-        socklen_t socklen = sizeof(source_addr);
-
-        while (1)
-        {
-            ESP_LOGI(TAG, "Waiting for data");
-
-            int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0,
-                               (struct sockaddr *)&source_addr, &socklen);
-
-            if (len < 0)
-            {
-                ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
-                break;
-            }
-
-            // Convert sender IP only for logging
-            if (source_addr.ss_family == PF_INET)
-            {
-                inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr,
-                            addr_str, sizeof(addr_str));
-            }
-            else
-            {
-                inet6_ntoa_r(((struct sockaddr_in6 *)&source_addr)->sin6_addr,
-                             addr_str, sizeof(addr_str));
-            }
-
-            rx_buffer[len] = 0;
-            ESP_LOGI(TAG, "Received %d bytes from %s:", len, addr_str);
-            ESP_LOGI(TAG, "%s", rx_buffer);
-
-            // Process OSC
-            OscPacket oscPacket;
-            OscPacketInitialiseFromCharArray(&oscPacket, rx_buffer, len);
-            oscPacket.processMessage = ProcessMessage;
-            OscPacketProcessMessages(&oscPacket);
-        }
-
-        shutdown(sock, 0);
-        close(sock);
-    }
-
-    vTaskDelete(NULL);
-}
-
-void udp_send_osc(OscPacket msg)
-{
-    if (sock < 0)
-    {
-        ESP_LOGE("UDP_Send", "Socket not initialized");
-        return;
-    }
-
-    const struct sockaddr_in dest_addr = {
-        .sin_family = AF_INET,
-        .sin_port = htons(nvs_global.osc_settings.remote_port),
-        .sin_addr.s_addr = inet_addr(nvs_global.osc_settings.remote_ip),
-    };
-
-    int err = sendto(
-        sock,
-        msg.contents,
-        msg.size,
-        0,
-        (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-
-    if (err < 0)
-    {
-        // ESP_LOGE("UDP_SEND", "Send failed: errno %d", errno);
-        // ESP_LOGI("UDP_SEND", "free_heap=%u", esp_get_free_heap_size());
-    }
-    else
-    {
-        // ESP_LOGI(TAG, "Sent: %s", msg);
-    }
-}
-
 // OSC
-void sendOscContents(const void *const oscContents)
+void received(const void *const data, const size_t number_of_bytes)
+{
+    // Process OSC
+    OscPacket oscPacket;
+    OscPacketInitialiseFromCharArray(&oscPacket, data, number_of_bytes);
+    oscPacket.processMessage = ProcessMessage;
+    OscPacketProcessMessages(&oscPacket);
+}
+
+static OscError sendOscContents(const void *const oscContents)
 {
     OscPacket OscPacket;
-    if (OscPacketInitialiseFromContents(&OscPacket, oscContents) != OscErrorNone)
+    OscError err = OscPacketInitialiseFromContents(&OscPacket, oscContents);
+    if (err != OscErrorNone)
     {
-        return;
+        return err;
     }
-    udp_send_osc(OscPacket);
+    udp_send_osc(OscPacket.contents, OscPacket.size);
+    return OscErrorNone;
 }
 
 void sendPingMessage()
@@ -1133,19 +886,6 @@ void gpio_task(void *pv)
     }
 }
 
-void throughput_test(void *pv)
-{
-    while (1)
-    {
-
-        // send_digital_inputs();  // only sends on change
-        // send_analogue_inputs(); // sends every cycle
-        sendPingMessage();
-        // Used to send only data on configured rate
-        vTaskDelay(pdMS_TO_TICKS(nvs_global.gpio_settings.gpio_rate));
-    }
-}
-
 void app_main(void)
 {
     // Initialise Non-Volatile Storage
@@ -1162,7 +902,7 @@ void app_main(void)
     flashLedRed();
 
     // Loads the Current Network Mode
-    uint32_t network_mode_default = AP_MODE_END; // pick your actual desired default
+    uint32_t network_mode_default = AP_MODE_END; 
     uint32_t network_mode = 0;
     esp_err_t err = nvs_load_value("net_settings", "network_mode", FIELD_ENUM, &network_mode_default, &network_mode);
     ESP_LOGE("NVS_LOAD", "%s", esp_err_to_name(err));
@@ -1192,7 +932,7 @@ void app_main(void)
 
     esp_netif_t *ap = NULL;
     esp_netif_t *sta = NULL;
-
+    wifi_config_t net_cfg;
     // Has to be initalised on a switch case due to esp_netif_create_default_wifi_(mode) starting its own threat that can cause problems
     if (network_mode == AP)
     {
@@ -1210,13 +950,15 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
 
+    esp_err_t network_err = ESP_OK;
     switch (network_mode)
     {
     case AP:
         // --- AP ONLY PATH ---
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
         ESP_LOGI(TAG_AP, "ESP_WIFI_MODE_AP");
-        wifi_init_softap();
+
+        network_err = wifi_configure_softap(&nvs_global, &net_cfg);
         ESP_ERROR_CHECK(esp_wifi_start());
 
         // No event group wait here
@@ -1231,7 +973,8 @@ void app_main(void)
 
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_LOGI(TAG_STA, "ESP_WIFI_MODE_STA");
-        wifi_init_sta();
+
+        network_err = wifi_configure_station(&nvs_global, &net_cfg);
         ESP_ERROR_CHECK(esp_wifi_start());
 
         EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
@@ -1259,10 +1002,11 @@ void app_main(void)
     httpd_handle_t server = start_webserver();
     (void)server;
 
-    // Spawns the UDP recive Server that handles all Remote -> x-osc2 messages
-    xTaskCreate(udp_server_task, "udp_server", 12288, (void *)AF_INET, 5, NULL);
-
-    // xTaskCreate(throughput_test, "TT", 8192, NULL, 5, NULL);
+    // Spawns the recive Server that handles all remote -> x-osc2 messages + makes socket
+    WirelessCallbacks cb = {
+        .received = received,
+    };
+    networking_init(&nvs_global.osc_settings, &cb);
 
     // Allows for analogue pin reads
     adc_init();
