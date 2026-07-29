@@ -939,7 +939,7 @@ void app_main(void)
 
     esp_netif_t *ap = NULL;
     esp_netif_t *sta = NULL;
-
+    wifi_config_t net_cfg;
     // Has to be initalised on a switch case due to esp_netif_create_default_wifi_(mode) starting its own threat that can cause problems
     if (network_mode == AP)
     {
@@ -957,6 +957,8 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
 
+
+    esp_err_t network_err = ESP_OK;
     switch (network_mode)
     {
     case AP:
@@ -964,10 +966,7 @@ void app_main(void)
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
         ESP_LOGI(TAG_AP, "ESP_WIFI_MODE_AP");
 
-        wifi_config_t cfg = {
-
-        };
-        esp_err_t err = wifi_configure_softap(&nvs_global, &cfg);
+        network_err = wifi_configure_softap(&nvs_global, &net_cfg);
         ESP_ERROR_CHECK(esp_wifi_start());
 
         // No event group wait here
@@ -983,10 +982,8 @@ void app_main(void)
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_LOGI(TAG_STA, "ESP_WIFI_MODE_STA");
         
-        wifi_config_t cfg = {
-
-        };
-        esp_err_t err =  wifi_configure_station(&nvs_global, &cfg);
+        
+        network_err =  wifi_configure_station(&nvs_global, &net_cfg);
         ESP_ERROR_CHECK(esp_wifi_start());
 
         EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
