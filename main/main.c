@@ -54,14 +54,8 @@
 
 // #include "global_nvs.h"
 #include "NVS_Helper_Funcs.h"
-#include "networking.h"
+#include "Networking.h"
 
-// typedef enum
-// {
-//     AP = 1,
-//     STA,
-//     AP_MODE_END
-// } AP_Mode;
 
 #define PINCOUNT CONFIG_PINCOUNT
 #define MAX_ATTEMPS 10
