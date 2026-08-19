@@ -23,25 +23,82 @@ Address: 192.168.4.1
 From here you can configure all options for it to join a network.
 
 
+# Style Guide
 
-# Observations 
-
-Max throughput ~3300 msg/s [104] byte length ~330KB/s data transfer
-
-## FreeRTOS tick rate 
+## File Structure 
+Every file opens with Doxygen-style header block:
 ``` c
-vTaskDelay(pdMS_TO_TICKS(nvs_global.gpio_settings.gpio_rate)); 
+/**
+ * @file file.c / file.h 
+ * @author Author 
+ * @brief File contents
+ */
 ```
-When 
+File body divided into labelled sections with marked full-width divider comments:
 ``` c
-nvs_global.gpio_settings.gpio_rate <= 10 
+//------------------------------------------------------------------------------
+// Includes
+
+//------------------------------------------------------------------------------
+// Variables
+
+//------------------------------------------------------------------------------
+// Function declarations
+
+//------------------------------------------------------------------------------
+// Functions Implementations
 ```
-Throughput spikes to max regardless of values 0->9 and stops at 10; 
+Section order: Includes → Variables → Function declarations → Functions. 
+Every static (private) function is forward-declared in the Function declarations section, in the order it will be defined.
 
-- 1000 allows for rough rates up to 1000 hz 
-- Further testing to allow for best granularity
+File ends:
+``` c 
+//------------------------------------------------------------------------------
+// End of file
+```
 
+## Naming conventions
 
-## Fails to compile with -O2
-OSC99 Fails to compile with -O2 optimisations due to warnings being treated as errors - Is possible to surpress but need more knowledge to know if its safe to do so
+### Functions
+snake_case, Prefixed with the owning module.
 
+### Variables 
+snake_case
+
+### Types/enums
+PascalCase
+
+## Doxygen Comments
+Each function requires a brief and a description of what each @param does with @notes for current implementation flaws/important information for the future and @details for functions needing to be implemented. @return needs to show all possible return values and any possible unexpected returns e.g esp_restart()
+e.g
+``` c
+/**
+ * @brief GET /network — updates nvs_global.net_settings (WiFi mode + AP/STA credentials),
+ * then redirects to "/" and restarts the device to apply the new settings.
+ * @param req HTTP GET request; expects query params: mode=AP|STA, AP-SSID, AP-Password,
+ * STA-SSID, STA-Password (all required).
+ * @note Long SSID/password input is silently truncated to 15 characters
+ * (value buffer size) rather than rejected or reported to the caller.
+ * @return ESP_OK on success; sends a 400 response if any required param is missing or mode is invalid.
+ */
+static esp_err_t Network_Handler(httpd_req_t *req)
+```
+
+## Const Correctness 
+Parameters that aren't mutated are const, including pointer targets: const char *const ssid.
+Local values that don't change after initialization are declared const: const WirelessSettings settings = { ... };, const unsigned int id = 0;.
+Struct literals use designated initializers:
+``` c
+const WirelessSettings settings = {
+    .region = WirelessRegionGb,
+    .client_ssid = "x-IMU3 Network",
+    .client_password = "xiotechnologies",
+    .client_channel = WirelessClientChannel44,
+};
+``` 
+
+## Constants & Magic Numbers
+Give magic numbers a named const and explain any non-obvious constraint inline with a trailing comment:
+``` c
+const int loop_hz = 100; // max is configTICK_RATE_HZ
+```
