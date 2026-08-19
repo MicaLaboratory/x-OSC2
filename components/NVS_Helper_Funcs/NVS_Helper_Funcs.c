@@ -17,7 +17,16 @@
 #include <string.h>
 #include "esp_err.h"
 
+//------------------------------------------------------------------------------
 // Variables
+/**
+ * @brief Static table describing every persisted field of NVS_Global.
+ *
+ * Each entry maps a dotted field name to its NVS namespace/key, its byte
+ * offset and size within NVS_Global, and its FieldType. Driven by
+ * nvs_update(), nvs_populate_value(), and nvs_populate_all() to perform
+ * generic field access without per-field switch statements at the call site.
+ */
 static const FieldDesc g_fields[] = {
     {"net_settings.network_mode", "net_settings", "network_mode",
      offsetof(NVS_Global, net_settings.network_mode),

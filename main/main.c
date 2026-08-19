@@ -1,3 +1,27 @@
+/**
+ * @file main.c
+ * @author Ben Marples
+ *
+ * Owns four responsibilities:
+ *  - WiFi setup and lifecycle: brings the device up in AP or STA mode
+ *    (see app_main, wifi_event_handler) based on nvs_global.net_settings.
+ *  - HTTP configuration server: a single-page UI (base_handler) plus
+ *    GET/POST handlers for reading and writing network, OSC, and GPIO
+ *    settings (Network_Handler, OSC_Handler, GPIO_Handler and their
+ *    *_json_handler counterparts). See start_webserver for the route table.
+ *  - OSC message routing: incoming UDP OSC messages are parsed and
+ *    dispatched to handlers in ROUTES (see received, ProcessMessage,
+ *    OSC_Routes.h for the route table itself).
+ *  - GPIO polling: periodically reads configured digital/analogue pins
+ *    and reports them over OSC (see gpio_task, send_digital_inputs,
+ *    send_analogue_inputs).
+ *
+ * Persistent configuration (network, OSC, and GPIO settings) is stored in
+ * NVS and mirrored in the in-memory nvs_global struct; see
+ * NVS_Helper_Funcs.h for the load/save helpers and defaults.
+ */
+//------------------------------------------------------------------------------
+// includes
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,9 +78,13 @@
 #include "NVS_Helper_Funcs.h"
 #include "Networking.h"
 
-#define PINCOUNT CONFIG_PINCOUNT
-#define MAX_ATTEMPS 10
 
+//------------------------------------------------------------------------------
+// Definitions 
+// Pincount
+#define PINCOUNT CONFIG_PINCOUNT
+
+// Wifi
 #if CONFIG_ESP_WIFI_AUTH_OPEN
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_OPEN
 #elif CONFIG_ESP_WIFI_AUTH_WEP
@@ -75,18 +103,36 @@
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
 #endif
 
-#define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
 
+// Wifi event bits
 /* The event group allows multiple bits for each event, but we only care about two events:
  * - we are connected to the AP with an IP
  * - we failed to connect after the maximum amount of retries */
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
+// Wifi retry count
+static int s_retry_num = 0;
+
+// Firmware version
+#define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
+
+
+// Logging Tags
 static const char *TAG_AP = "WiFi SoftAP";
 static const char *TAG_STA = "WiFi Sta";
 
-static int s_retry_num = 0;
+/* FreeRTOS event group to signal when we are connected/disconnected */
+static EventGroupHandle_t s_wifi_event_group;
+
+// Used to read analog pins
+adc_oneshot_unit_handle_t adc_handle;
+
+// Usef to keep track of digital pins
+static int last_digital[PINCOUNT] = {0};
+
+//------------------------------------------------------------------------------
+// Structures
 
 // NVS_GLOBAL_INTERMIDARY
 
@@ -114,11 +160,20 @@ static const NVS_Global NVS_DEFAULTS = {
         .pin_io = {GPIO_OUTPUT},
     }};
 
-// Helper funcs
+//------------------------------------------------------------------------------
+// Function Definitions
 char *getCurrentIP();
+void init_default_Config(NVS_Global *const nvs);
+static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage);
 
-// Defaults
-void init_default_Config(NVS_Global *nvs)
+//------------------------------------------------------------------------------
+// Function Implementations 
+
+/** 
+* @brief Instantiates defaults configurations and pushes to the in memory struct
+* @param nvs Expects a pointer to a NVS_Global object 
+*/
+void init_default_Config(NVS_Global *const nvs)
 {
     /* -----------------------------------------
        Network Settings
@@ -169,9 +224,13 @@ void init_default_Config(NVS_Global *nvs)
     ESP_ERROR_CHECK(nvs_save_gpio_pins(default_modes, default_ios));
 }
 
-/* FreeRTOS event group to signal when we are connected/disconnected */
-static EventGroupHandle_t s_wifi_event_group;
-
+/** 
+* @brief Handles all Wi-FI based events (ESP BOILER PLATE)
+* @param arg Unused
+* @param event_base Used to tell if event is a Wi-Fi or Ip Based Event
+* @param event_id Used to tell different events appart
+* @param event_data Holds the current relevant data of the event
+*/
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED)
@@ -221,7 +280,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     }
 }
 
-/* An HTTP GET handler */
+/**
+ * @brief GET / — serves the configuration web page (network, OSC, and GPIO settings forms).
+ * Page JS pulls current values from /network.json, /osc.json, and /gpio.json on load.
+ * @param req Current HTTP request.
+ * @return ESP_OK on success.
+ */
 static esp_err_t base_handler(httpd_req_t *req)
 {
     print_all_nvs_entries("Global-Config");
@@ -230,6 +294,11 @@ static esp_err_t base_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/** 
+* @brief Triggers A full Reset of the device by setting the Wi-Fi mode to be out of range then restarting to trigger init_default_Config(NVS_Global *const nvs) 
+* @param req HTTP GET request; 
+* @return Should not return since esp_restart() cancels the function
+*/
 static esp_err_t Conf_Reset(httpd_req_t *req)
 {
     uint32_t mode = AP_MODE_END;
@@ -239,6 +308,15 @@ static esp_err_t Conf_Reset(httpd_req_t *req)
     return ESP_OK;
 }
 
+/**
+ * @brief GET /network — updates nvs_global.net_settings (WiFi mode + AP/STA credentials),
+ * then redirects to "/" and restarts the device to apply the new settings.
+ * @param req HTTP GET request; expects query params: mode=AP|STA, AP-SSID, AP-Password,
+ * STA-SSID, STA-Password (all required).
+ * @note Long SSID/password input is silently truncated to 15 characters
+ * (value buffer size) rather than rejected or reported to the caller.
+ * @return ESP_OK on success; sends a 400 response if any required param is missing or mode is invalid.
+ */
 static esp_err_t Network_Handler(httpd_req_t *req)
 {
     char query[256];
@@ -320,6 +398,13 @@ static esp_err_t Network_Handler(httpd_req_t *req)
     return ESP_OK;
 };
 
+/**
+ * @brief GET /OSC — updates nvs_global.osc_settings (remote/local IP and port for OSC messages).
+ * @param req HTTP GET request; expects query params: OSC-Remote, OSC-Remote-Port,
+ * OSC-Local, OSC-Local-Port (all required).
+ * @note Doesnt validate size before writing to nvs
+ * @return ESP_OK on success; sends a 400 response if any required param is missing.
+ */
 static esp_err_t OSC_Handler(httpd_req_t *req)
 {
     char query[256];
@@ -372,6 +457,15 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
     return ESP_OK;
 };
 
+/**
+ * @brief POST /GPIO — updates nvs_global.gpio_settings (mode + IO direction for every pin)
+ * from the request body and persists them via nvs_save_gpio_pins.
+ * @param req HTTP POST request; body is form-encoded with pinN and pinN-io for
+ * N = 1..PINCOUNT. Missing fields are left unchanged; out-of-range values fall back
+ * to GPIO_OFF / Output.
+ * @return ESP_OK on success (including partial saves); sends a 400 response if the
+ * body is missing or exceeds 1024 bytes.
+ */
 static esp_err_t GPIO_Handler(httpd_req_t *req)
 {
     // --- Read POST body ---
@@ -435,6 +529,12 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
     return ESP_OK;
 };
 
+/**
+ * @brief GET /gpio.json — serves the current mode and IO direction of every pin
+ * from nvs_global.gpio_settings as JSON.
+ * @param req Current HTTP request.
+ * @return ESP_OK on success.
+ */
 static esp_err_t gpio_json_handler(httpd_req_t *req)
 {
     char json[2048];
@@ -460,6 +560,12 @@ static esp_err_t gpio_json_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/**
+ * @brief GET /network.json — serves the current nvs_global.net_settings
+ * (mode, AP/STA SSID and password) as JSON.
+ * @param req Current HTTP request.
+ * @return ESP_OK on success.
+ */
 static esp_err_t network_json_handler(httpd_req_t *req)
 {
     char json[512];
@@ -486,6 +592,12 @@ static esp_err_t network_json_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/**
+ * @brief GET /osc.json — serves the current nvs_global.osc_settings
+ * (remote/local IP and port) as JSON.
+ * @param req Current HTTP request.
+ * @return ESP_OK on success.
+ */
 static esp_err_t osc_json_handler(httpd_req_t *req)
 {
     char json[256];
@@ -566,7 +678,11 @@ static const httpd_uri_t network_json_uri = {
     .user_ctx = NULL,
 };
 
-// Defines the Full Http server
+/**
+ * @brief Starts the HTTP server and registers all URI handlers
+ * (/, /network, /OSC, /GPIO, /gpio.json, /osc.json, /network.json, /reset).
+ * @return Handle to the running server, or NULL if httpd_start failed.
+ */
 httpd_handle_t start_webserver()
 {
 
@@ -605,8 +721,10 @@ httpd_handle_t start_webserver()
     return NULL;
 }
 
-// UDP
-
+/**
+ * @brief Fetches the current Ip address of the X-OSC2 
+ * @return The current Ip or "0.0.0.0" If failed
+ */
 char *getCurrentIP()
 {
     static char ip_str[16];
@@ -636,8 +754,28 @@ char *getCurrentIP()
 }
 
 // OSC message server
+/**
+ * @brief Is a callback function that is called from Networking.c 
+ * @param data Holds the data recieved from the port
+ * @param number_of_bytes Size of data recieved from the port
+ */
+void received(const void *const data, const size_t number_of_bytes)
+{
+    // Process OSC
+    OscPacket oscPacket;
+    OscPacketInitialiseFromCharArray(&oscPacket, data, number_of_bytes);
+    oscPacket.processMessage = ProcessMessage;
+    OscPacketProcessMessages(&oscPacket);
+}
 
-// Helper: parse channel and validate numeric suffix
+/**
+ * @brief Parses and validates a numeric channel suffix from an OSC address.
+ * @param addr Full OSC address string (e.g. "/gpio/set5").
+ * @param prefix Expected prefix to strip before parsing (e.g. "/gpio/set").
+ * @param min_ch Minimum valid channel number (inclusive).
+ * @param max_ch Maximum valid channel number (inclusive).
+ * @return Parsed channel number, or -1 if missing/non-numeric/out of range.
+ */
 static int parseChannelValidated(const char *addr, const char *prefix, const int min_ch, const int max_ch)
 {
     const char *p = addr + strlen(prefix);
@@ -663,6 +801,22 @@ static int parseChannelValidated(const char *addr, const char *prefix, const int
     return ch;
 }
 
+/**
+ * @brief Dispatches an incoming OSC message to the matching handler in ROUTES.
+ *
+ * Matches oscMessage->oscAddressPattern against each route's prefix. For
+ * channel-based routes (r->has_channel), the address must start with the
+ * route's prefix followed by a valid numeric channel in the range
+ * 1..PINCOUNT (see parseChannelValidated); the parsed channel is passed to
+ * the handler. For non-channel routes, the address must match the prefix
+ * exactly, and the handler is called with channel -1. If no route matches,
+ * or a channel-based route's prefix matches but the channel suffix is
+ * missing/invalid, the red LED is flashed and the message is dropped.
+ *
+ * @param oscTimeTag Time tag from the containing OSC packet (unused).
+ * @param oscMessage Parsed OSC message to route; must have a non-NULL
+ * oscAddressPattern.
+ */
 static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
@@ -717,16 +871,12 @@ static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const
     flashLedRed();
 }
 
-// OSC
-void received(const void *const data, const size_t number_of_bytes)
-{
-    // Process OSC
-    OscPacket oscPacket;
-    OscPacketInitialiseFromCharArray(&oscPacket, data, number_of_bytes);
-    oscPacket.processMessage = ProcessMessage;
-    OscPacketProcessMessages(&oscPacket);
-}
-
+/**
+ * @brief Serializes an OSC message/bundle and sends it over UDP.
+ * @param oscContents Pointer to an initialised OscMessage or OscBundle to send.
+ * @return OscErrorNone on success, or the OscError returned by
+ * OscPacketInitialiseFromContents on failure (nothing is sent in that case).
+ */
 static OscError sendOscContents(const void *const oscContents)
 {
     OscPacket OscPacket;
@@ -739,6 +889,13 @@ static OscError sendOscContents(const void *const oscContents)
     return OscErrorNone;
 }
 
+/**
+ * @brief Builds and sends a "/ping" OSC message announcing this device's
+ * current IP, MAC address, and firmware version.
+ *
+ * Intended for discovery: a remote OSC client can use the reply to find the
+ * device's IP and confirm it's running the expected firmware version.
+ */
 void sendPingMessage()
 {
     OscMessage oscMessage;
@@ -766,8 +923,13 @@ void sendPingMessage()
 }
 
 // Pin reads
-adc_oneshot_unit_handle_t adc_handle;
-
+/**
+ * @brief Initialises the ADC unit and configures channels for analogue pin reads.
+ *
+ * Creates the ADC_UNIT_1 oneshot handle and configures channels for pins 2-6
+ * (ADC channel = pin - 1) with 12 dB attenuation and default bitwidth.
+ * @note Pins 2-6 are valid for analog reads but will be different if the board changes 
+ */
 void adc_init(void)
 {
     adc_oneshot_unit_init_cfg_t init_cfg = {
@@ -789,6 +951,15 @@ void adc_init(void)
     }
 }
 
+/**
+ * @brief Reads the current digital level of a GPIO pin.
+ *
+ * Reconfigures the pin as a digital input (no pull-up/down, interrupts
+ * disabled) on every call before reading its level.
+ *
+ * @param pin GPIO pin number to read.
+ * @return 0 or 1, the current logic level of the pin.
+ */
 int readDigitalPin(const int pin)
 {
     gpio_config_t io_conf = {
@@ -803,6 +974,12 @@ int readDigitalPin(const int pin)
     return gpio_get_level(pin);
 }
 
+/**
+ * @brief Reads and normalises the current value of an analogue pin.
+ * @param pin Pin number to read (1-based); mapped to ADC channel = pin - 1.
+ * Must be a pin configured in adc_init (channels for pins 2-6).
+ * @return Raw ADC reading normalised to the range 0.0-1.0 (raw / 4095).
+ */
 float readAnaloguePin(const int pin)
 {
     const int channel = pin - 1;
@@ -813,8 +990,13 @@ float readAnaloguePin(const int pin)
     return (float)raw / 4095.0f;
 }
 
-static int last_digital[PINCOUNT] = {0};
-
+/**
+ * @brief Reads all pins configured as GPIO_DIGITAL and sends their values
+ * over OSC to "/inputs/digital" if any value has changed since the last call.
+ *
+ * Pins not in GPIO_DIGITAL mode are reported as 0. Uses last_digital[] to
+ * detect changes and suppress redundant sends.
+ */
 void send_digital_inputs(void)
 {
     int changed = 0;
@@ -853,6 +1035,12 @@ void send_digital_inputs(void)
     sendOscContents(&msg);
 }
 
+/**
+ * @brief Reads all pins configured as GPIO_ANALOGUE and sends their values
+ * over OSC to "/inputs/analogue" on every call, regardless of change.
+ *
+ * Pins not in GPIO_ANALOGUE mode are reported as 0.0.
+ */
 void send_analogue_inputs(void)
 {
     OscMessage msg;
@@ -874,6 +1062,16 @@ void send_analogue_inputs(void)
     sendOscContents(&msg);
 }
 
+/**
+ * @brief FreeRTOS task that periodically polls and reports GPIO input state.
+ *
+ * Runs forever: sends digital inputs (only on change) and analogue inputs
+ * (every cycle) over OSC, then delays for nvs_global.gpio_settings.gpio_rate
+ * milliseconds before repeating.
+ *
+ * @param pv Unused task parameter (required by the FreeRTOS task signature).
+ * @note To increase accuracy of frequency. Increase the value of CONFIG_FREERTOS_HZ=1000 in sdkconfig.defaults
+ */
 void gpio_task(void *pv)
 {
     while (1)
@@ -886,6 +1084,35 @@ void gpio_task(void *pv)
     }
 }
 
+/**
+ * @brief Application entry point.
+ *
+ * Boot sequence:
+ * 1. Initialises NVS flash, erasing and re-initialising if the partition
+ *    is out of free pages or a newer NVS version is found.
+ * 2. Loads the stored network_mode; if it's missing or out of the valid
+ *    AP..AP_MODE_END range, writes factory defaults via init_default_Config
+ *    and restarts to pick them up.
+ * 3. Populates nvs_global from NVS_DEFAULTS for any unset fields, and loads
+ *    the saved GPIO pin mode/IO configuration.
+ * 4. Initialises the network interface and default event loop, then creates
+ *    either an AP or STA netif depending on network_mode (mutually
+ *    exclusive, since esp_netif_create_default_wifi_* starts its own task).
+ * 5. Initialises WiFi and registers wifi_event_handler for WIFI_EVENT and
+ *    IP_EVENT_STA_GOT_IP.
+ * 6. Starts WiFi in the selected mode:
+ *    - AP: starts immediately, no connection to wait for.
+ *    - STA: waits (blocking) on s_wifi_event_group for either
+ *      WIFI_CONNECTED_BIT or WIFI_FAIL_BIT. On failure after
+ *      CONFIG_ESP_MAXIMUM_STA_RETRY retries, falls back to AP mode in NVS
+ *      and restarts.
+ * 7. Starts the HTTP config server (start_webserver), initialises the OSC
+ *    UDP socket (networking_init) with `received` as the message callback,
+ *    initialises the ADC for analogue reads (adc_init), and spawns
+ *    gpio_task to periodically poll and report GPIO state over OSC.
+ *
+ * Does not return under normal operation.
+ */
 void app_main(void)
 {
     // Initialise Non-Volatile Storage
@@ -902,7 +1129,7 @@ void app_main(void)
     flashLedRed();
 
     // Loads the Current Network Mode
-    uint32_t network_mode_default = AP_MODE_END; 
+    uint32_t network_mode_default = AP_MODE_END;
     uint32_t network_mode = 0;
     esp_err_t err = nvs_load_value("net_settings", "network_mode", FIELD_ENUM, &network_mode_default, &network_mode);
     ESP_LOGE("NVS_LOAD", "%s", esp_err_to_name(err));
