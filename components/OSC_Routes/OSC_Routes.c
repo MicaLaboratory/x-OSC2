@@ -1,6 +1,9 @@
 /**
  * @file OSC_Routes.c
  * @author Ben Marples
+ *
+ * @brief Implements the OSC message handlers declared in OSC_Routes.h, along
+ *        with on-board LED indicator control.
  */
 
 //------------------------------------------------------------------------------
@@ -15,10 +18,23 @@
 
 //------------------------------------------------------------------------------
 // Variables
+/** 
+ * @brief Stores the handle for the onboard LED. 
+ */
 static led_strip_handle_t led_strip;
 
 //------------------------------------------------------------------------------
 // LED Flashing
+/**
+ * @brief Initialize the on-board LED strip driver.
+ *
+ * @details Configures the LED strip on GPIO 27 with a single pixel using the
+ *          RMT peripheral at a 10 MHz resolution, then clears (turns off)
+ *          all pixels. Must be called before the strip is used; called
+ *          automatically by flashLedRed() if the strip has not yet been
+ *          initialized.
+ * @note Currently bound to the esp32-c5
+ */
 static void configure_led(void)
 {
     /* LED strip initialization with the GPIO and pixels number*/
