@@ -88,14 +88,6 @@ static esp_err_t Network_Handler(httpd_req_t *req)
 Parameters that aren't mutated are const, including pointer targets: const char *const ssid.
 Local values that don't change after initialization are declared const: const WirelessSettings settings = { ... };, const unsigned int id = 0;.
 Struct literals use designated initializers:
-``` c
-const WirelessSettings settings = {
-    .region = WirelessRegionGb,
-    .client_ssid = "x-IMU3 Network",
-    .client_password = "xiotechnologies",
-    .client_channel = WirelessClientChannel44,
-};
-``` 
 
 ## Constants & Magic Numbers
 Give magic numbers a named const and explain any non-obvious constraint inline with a trailing comment:
