@@ -141,7 +141,7 @@ static int last_digital[PINCOUNT] = {0};
 //------------------------------------------------------------------------------
 // Structures
 
-// NVS_GLOBAL_INTERMIDARY
+// NVS_GLOBAL_INTERMEDIARY
 
 static NVS_Global nvs_global;
 
