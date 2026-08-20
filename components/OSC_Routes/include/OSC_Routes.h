@@ -76,7 +76,7 @@ static inline int parseChannel(const char *addr, const char *prefix)
  * This function is typically used for connectivity testing or heartbeat
  * signalling.
  */
-extern void sendPingMessage();
+extern void osc_send_ping_message(void);
 
 /**
  * @brief Send all analogue input values as an OSC message.
@@ -84,7 +84,7 @@ extern void sendPingMessage();
  * Intended for bulk analogue reporting, typically triggered by a remote
  * request or periodic update.
  */
-extern void send_analogue_inputs();
+extern void send_analogue_inputs(void);
 
 //------------------------------------------------------------------------------
 // Handler Function Declarations

@@ -135,7 +135,7 @@ static EventGroupHandle_t s_wifi_event_group;
 // Used to read analog pins
 adc_oneshot_unit_handle_t adc_handle;
 
-// Usef to keep track of digital pins
+// Used to keep track of digital pins
 static int last_digital[PINCOUNT] = {0};
 
 //------------------------------------------------------------------------------
@@ -709,7 +709,7 @@ httpd_handle_t http_start_webserver()
 
     httpd_handle_t server = NULL;
 
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    const httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
     if (httpd_start(&server, &config) == ESP_OK)
     {
@@ -917,7 +917,7 @@ static OscError osc_send_contents(const void *const oscContents)
  * Intended for discovery: a remote OSC client can use the reply to find the
  * device's IP and confirm it's running the expected firmware version.
  */
-void osc_send_ping_message()
+void osc_send_ping_message(void)
 {
     OscMessage oscMessage;
     OscMessageInitialise(&oscMessage, "/ping");
@@ -1150,7 +1150,7 @@ void app_main(void)
     flashLedRed();
 
     // Loads the Current Network Mode
-    uint32_t network_mode_default = AP_MODE_END;
+    const uint32_t network_mode_default = AP_MODE_END;
     uint32_t network_mode = 0;
     esp_err_t err = nvs_load_value("net_settings", "network_mode", FIELD_ENUM, &network_mode_default, &network_mode);
     ESP_LOGE("NVS_LOAD", "%s", esp_err_to_name(err));
@@ -1251,10 +1251,10 @@ void app_main(void)
     (void)server;
 
     // Spawns the recive Server that handles all remote -> x-osc2 messages + makes socket
-    WirelessCallbacks cb = {
+    const WirelessCallbacks wireless_callbacks = {
         .received = received,
     };
-    networking_init(&nvs_global.osc_settings, &cb);
+    networking_init(&nvs_global.osc_settings, &wireless_callbacks);
 
     // Allows for analogue pin reads
     adc_init();

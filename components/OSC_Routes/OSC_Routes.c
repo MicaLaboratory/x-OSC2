@@ -68,7 +68,7 @@ void flashLedRed(void)
 void handlePing(OscMessage *msg, const int channel, NVS_Global *ctx)
 {
     ESP_LOGI("OSC", "Ping received");
-    sendPingMessage();
+    osc_send_ping_message();
     ESP_LOGI("OSC", "Ping response Sent");
 }
 
