@@ -1,16 +1,19 @@
 /**
  * @file main.c
  * @author Ben Marples
- *
+ * 
+ * @brief WiFi/HTTP config server, OSC router, and GPIO poller for the X‑OSC2 device
+ * 
+ * @details
  * Owns four responsibilities:
  *  - WiFi setup and lifecycle: brings the device up in AP or STA mode
  *    (see app_main, wifi_event_handler) based on nvs_global.net_settings.
  *  - HTTP configuration server: a single-page UI (base_handler) plus
  *    GET/POST handlers for reading and writing network, OSC, and GPIO
- *    settings (Network_Handler, OSC_Handler, GPIO_Handler and their
- *    *_json_handler counterparts). See start_webserver for the route table.
+ *    settings (http_network_handler, http_osc_handler, http_gpio_handler and their
+ *    *_json_handler counterparts). See http_start_webserver for the route table.
  *  - OSC message routing: incoming UDP OSC messages are parsed and
- *    dispatched to handlers in ROUTES (see received, ProcessMessage,
+ *    dispatched to handlers in ROUTES (see received, osc_process_message,
  *    OSC_Routes.h for the route table itself).
  *  - GPIO polling: periodically reads configured digital/analogue pins
  *    and reports them over OSC (see gpio_task, send_digital_inputs,
@@ -21,7 +24,7 @@
  * NVS_Helper_Funcs.h for the load/save helpers and defaults.
  */
 //------------------------------------------------------------------------------
-// includes
+// Includes
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -84,6 +87,10 @@
 // Pincount
 #define PINCOUNT CONFIG_PINCOUNT
 
+
+// Firmware version
+#define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
+
 // Wifi
 #if CONFIG_ESP_WIFI_AUTH_OPEN
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_OPEN
@@ -103,7 +110,6 @@
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
 #endif
 
-
 // Wifi event bits
 /* The event group allows multiple bits for each event, but we only care about two events:
  * - we are connected to the AP with an IP
@@ -111,11 +117,12 @@
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
+//------------------------------------------------------------------------------
+// Variables
+
 // Wifi retry count
 static int s_retry_num = 0;
 
-// Firmware version
-#define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
 
 
 // Logging Tags
@@ -161,10 +168,24 @@ static const NVS_Global NVS_DEFAULTS = {
     }};
 
 //------------------------------------------------------------------------------
-// Function Definitions
-char *getCurrentIP();
-void init_default_Config(NVS_Global *const nvs);
-static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage);
+// Function Declarations
+static char *wifi_get_current_ip(void);
+static void init_default_Config(NVS_Global *const nvs);
+static int osc_parse_channel_validated(const char *addr, const char *prefix, const int min_ch, const int max_ch);
+static void osc_process_message(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage);
+static OscError osc_send_contents(const void *const oscContents);
+
+static void adc_init(void);
+static void gpio_task(void *pv);
+
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+static esp_err_t base_handler(httpd_req_t *req);
+static esp_err_t http_configure_reset(httpd_req_t *req);
+static esp_err_t http_network_handler(httpd_req_t *req);
+static esp_err_t http_osc_handler(httpd_req_t *req);
+static esp_err_t http_gpio_handler(httpd_req_t *req);
+static esp_err_t http_gpio_json_handler(httpd_req_t *req);
+static esp_err_t http_network_json_handler(httpd_req_t *req);
 
 //------------------------------------------------------------------------------
 // Function Implementations 
@@ -173,7 +194,7 @@ static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const
 * @brief Instantiates defaults configurations and pushes to the in memory struct
 * @param nvs Expects a pointer to a NVS_Global object 
 */
-void init_default_Config(NVS_Global *const nvs)
+static void init_default_Config(NVS_Global *const nvs)
 {
     /* -----------------------------------------
        Network Settings
@@ -299,7 +320,7 @@ static esp_err_t base_handler(httpd_req_t *req)
 * @param req HTTP GET request; 
 * @return Should not return since esp_restart() cancels the function
 */
-static esp_err_t Conf_Reset(httpd_req_t *req)
+static esp_err_t http_configure_reset(httpd_req_t *req)
 {
     uint32_t mode = AP_MODE_END;
     ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.network_mode", &mode));
@@ -317,7 +338,7 @@ static esp_err_t Conf_Reset(httpd_req_t *req)
  * (value buffer size) rather than rejected or reported to the caller.
  * @return ESP_OK on success; sends a 400 response if any required param is missing or mode is invalid.
  */
-static esp_err_t Network_Handler(httpd_req_t *req)
+static esp_err_t http_network_handler(httpd_req_t *req)
 {
     char query[256];
     char value[16];
@@ -405,7 +426,7 @@ static esp_err_t Network_Handler(httpd_req_t *req)
  * @note Doesnt validate size before writing to nvs
  * @return ESP_OK on success; sends a 400 response if any required param is missing.
  */
-static esp_err_t OSC_Handler(httpd_req_t *req)
+static esp_err_t http_osc_handler(httpd_req_t *req)
 {
     char query[256];
     char value[64];
@@ -466,7 +487,7 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
  * @return ESP_OK on success (including partial saves); sends a 400 response if the
  * body is missing or exceeds 1024 bytes.
  */
-static esp_err_t GPIO_Handler(httpd_req_t *req)
+static esp_err_t http_gpio_handler(httpd_req_t *req)
 {
     // --- Read POST body ---
     const int total = req->content_len;
@@ -516,7 +537,7 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
     esp_err_t err = nvs_save_gpio_pins(nvs_global.gpio_settings.pin_mode, nvs_global.gpio_settings.pin_io);
     if (err != ESP_OK)
     {
-        ESP_LOGE("GPIO_Handler", "Failed to persist pin config: %s", esp_err_to_name(err));
+        ESP_LOGE("http_gpio_handler", "Failed to persist pin config: %s", esp_err_to_name(err));
     }
 
     // --- Respond so browser stops loading ---
@@ -535,7 +556,7 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
  * @param req Current HTTP request.
  * @return ESP_OK on success.
  */
-static esp_err_t gpio_json_handler(httpd_req_t *req)
+static esp_err_t http_gpio_json_handler(httpd_req_t *req)
 {
     char json[2048];
     int offset = 0;
@@ -566,7 +587,7 @@ static esp_err_t gpio_json_handler(httpd_req_t *req)
  * @param req Current HTTP request.
  * @return ESP_OK on success.
  */
-static esp_err_t network_json_handler(httpd_req_t *req)
+static esp_err_t http_network_json_handler(httpd_req_t *req)
 {
     char json[512];
     int offset = 0;
@@ -598,7 +619,7 @@ static esp_err_t network_json_handler(httpd_req_t *req)
  * @param req Current HTTP request.
  * @return ESP_OK on success.
  */
-static esp_err_t osc_json_handler(httpd_req_t *req)
+static esp_err_t http_osc_json_handler(httpd_req_t *req)
 {
     char json[256];
     int offset = 0;
@@ -632,49 +653,49 @@ static const httpd_uri_t base_uri = {
 static const httpd_uri_t reset_uri = {
     .uri = "/reset",
     .method = HTTP_GET,
-    .handler = Conf_Reset,
+    .handler = http_configure_reset,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t network_uri = {
     .uri = "/network",
     .method = HTTP_GET,
-    .handler = Network_Handler,
+    .handler = http_network_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t OSC_uri = {
     .uri = "/OSC",
     .method = HTTP_GET,
-    .handler = OSC_Handler,
+    .handler = http_osc_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t GPIO_uri = {
     .uri = "/GPIO",
     .method = HTTP_POST,
-    .handler = GPIO_Handler,
+    .handler = http_gpio_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t gpio_json_uri = {
     .uri = "/gpio.json",
     .method = HTTP_GET,
-    .handler = gpio_json_handler,
+    .handler = http_gpio_json_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t osc_json_uri = {
     .uri = "/osc.json",
     .method = HTTP_GET,
-    .handler = osc_json_handler,
+    .handler = http_osc_json_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t network_json_uri = {
     .uri = "/network.json",
     .method = HTTP_GET,
-    .handler = network_json_handler,
+    .handler = http_network_json_handler,
     .user_ctx = NULL,
 };
 
@@ -683,7 +704,7 @@ static const httpd_uri_t network_json_uri = {
  * (/, /network, /OSC, /GPIO, /gpio.json, /osc.json, /network.json, /reset).
  * @return Handle to the running server, or NULL if httpd_start failed.
  */
-httpd_handle_t start_webserver()
+httpd_handle_t http_start_webserver()
 {
 
     httpd_handle_t server = NULL;
@@ -725,7 +746,7 @@ httpd_handle_t start_webserver()
  * @brief Fetches the current Ip address of the X-OSC2 
  * @return The current Ip or "0.0.0.0" If failed
  */
-char *getCurrentIP()
+static char *wifi_get_current_ip(void)
 {
     static char ip_str[16];
     esp_netif_ip_info_t ip_info;
@@ -764,7 +785,7 @@ void received(const void *const data, const size_t number_of_bytes)
     // Process OSC
     OscPacket oscPacket;
     OscPacketInitialiseFromCharArray(&oscPacket, data, number_of_bytes);
-    oscPacket.processMessage = ProcessMessage;
+    oscPacket.processMessage = osc_process_message;
     OscPacketProcessMessages(&oscPacket);
 }
 
@@ -776,7 +797,7 @@ void received(const void *const data, const size_t number_of_bytes)
  * @param max_ch Maximum valid channel number (inclusive).
  * @return Parsed channel number, or -1 if missing/non-numeric/out of range.
  */
-static int parseChannelValidated(const char *addr, const char *prefix, const int min_ch, const int max_ch)
+static int osc_parse_channel_validated(const char *addr, const char *prefix, const int min_ch, const int max_ch)
 {
     const char *p = addr + strlen(prefix);
     if (!p || *p == '\0')
@@ -807,7 +828,7 @@ static int parseChannelValidated(const char *addr, const char *prefix, const int
  * Matches oscMessage->oscAddressPattern against each route's prefix. For
  * channel-based routes (r->has_channel), the address must start with the
  * route's prefix followed by a valid numeric channel in the range
- * 1..PINCOUNT (see parseChannelValidated); the parsed channel is passed to
+ * 1..PINCOUNT (see osc_parse_channel_validated); the parsed channel is passed to
  * the handler. For non-channel routes, the address must match the prefix
  * exactly, and the handler is called with channel -1. If no route matches,
  * or a channel-based route's prefix matches but the channel suffix is
@@ -817,7 +838,7 @@ static int parseChannelValidated(const char *addr, const char *prefix, const int
  * @param oscMessage Parsed OSC message to route; must have a non-NULL
  * oscAddressPattern.
  */
-static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage)
+static void osc_process_message(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
     if (addr == NULL)
@@ -843,7 +864,7 @@ static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const
             }
 
             // parse and validate channel (example valid range 1..16; adjust if needed)
-            const int channel = parseChannelValidated(addr, r->prefix, 1, PINCOUNT);
+            const int channel = osc_parse_channel_validated(addr, r->prefix, 1, PINCOUNT);
             if (channel < 0)
             {
                 ESP_LOGW("OSC_Process", "Matched prefix '%s' but invalid channel in '%s'", r->prefix, addr);
@@ -877,7 +898,7 @@ static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const
  * @return OscErrorNone on success, or the OscError returned by
  * OscPacketInitialiseFromContents on failure (nothing is sent in that case).
  */
-static OscError sendOscContents(const void *const oscContents)
+static OscError osc_send_contents(const void *const oscContents)
 {
     OscPacket OscPacket;
     OscError err = OscPacketInitialiseFromContents(&OscPacket, oscContents);
@@ -896,13 +917,13 @@ static OscError sendOscContents(const void *const oscContents)
  * Intended for discovery: a remote OSC client can use the reply to find the
  * device's IP and confirm it's running the expected firmware version.
  */
-void sendPingMessage()
+void osc_send_ping_message()
 {
     OscMessage oscMessage;
     OscMessageInitialise(&oscMessage, "/ping");
 
     // 1. Add current IP (AP or STA depending on NVS setting)
-    OscMessageAddString(&oscMessage, getCurrentIP());
+    OscMessageAddString(&oscMessage, wifi_get_current_ip());
 
     // 2. Add MAC address
     uint8_t mac[6];
@@ -919,7 +940,7 @@ void sendPingMessage()
     OscMessageAddString(&oscMessage, FIRMWARE_VERSION);
 
     // Send the OSC message
-    sendOscContents(&oscMessage);
+    osc_send_contents(&oscMessage);
 }
 
 // Pin reads
@@ -930,7 +951,7 @@ void sendPingMessage()
  * (ADC channel = pin - 1) with 12 dB attenuation and default bitwidth.
  * @note Pins 2-6 are valid for analog reads but will be different if the board changes 
  */
-void adc_init(void)
+static void adc_init(void)
 {
     adc_oneshot_unit_init_cfg_t init_cfg = {
         .unit_id = ADC_UNIT_1,
@@ -960,7 +981,7 @@ void adc_init(void)
  * @param pin GPIO pin number to read.
  * @return 0 or 1, the current logic level of the pin.
  */
-int readDigitalPin(const int pin)
+int gpio_read_digital_pin(const int pin)
 {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << pin),
@@ -980,7 +1001,7 @@ int readDigitalPin(const int pin)
  * Must be a pin configured in adc_init (channels for pins 2-6).
  * @return Raw ADC reading normalised to the range 0.0-1.0 (raw / 4095).
  */
-float readAnaloguePin(const int pin)
+float gpio_read_analog_pin(const int pin)
 {
     const int channel = pin - 1;
 
@@ -1006,7 +1027,7 @@ void send_digital_inputs(void)
     {
         if (nvs_global.gpio_settings.pin_mode[i - 1] == GPIO_DIGITAL)
         {
-            int val = readDigitalPin(i);
+            int val = gpio_read_digital_pin(i);
             values[i - 1] = val;
 
             if (val != last_digital[i - 1])
@@ -1032,7 +1053,7 @@ void send_digital_inputs(void)
         OscMessageAddInt32(&msg, values[i]);
     }
 
-    sendOscContents(&msg);
+    osc_send_contents(&msg);
 }
 
 /**
@@ -1050,7 +1071,7 @@ void send_analogue_inputs(void)
     {
         if (nvs_global.gpio_settings.pin_mode[i - 1] == GPIO_ANALOGUE)
         {
-            float val = readAnaloguePin(i);
+            float val = gpio_read_analog_pin(i);
             OscMessageAddFloat32(&msg, val);
         }
         else
@@ -1059,7 +1080,7 @@ void send_analogue_inputs(void)
         }
     }
 
-    sendOscContents(&msg);
+    osc_send_contents(&msg);
 }
 
 /**
@@ -1072,7 +1093,7 @@ void send_analogue_inputs(void)
  * @param pv Unused task parameter (required by the FreeRTOS task signature).
  * @note To increase accuracy of frequency. Increase the value of CONFIG_FREERTOS_HZ=1000 in sdkconfig.defaults
  */
-void gpio_task(void *pv)
+static void gpio_task(void *pv)
 {
     while (1)
     {
@@ -1106,7 +1127,7 @@ void gpio_task(void *pv)
  *      WIFI_CONNECTED_BIT or WIFI_FAIL_BIT. On failure after
  *      CONFIG_ESP_MAXIMUM_STA_RETRY retries, falls back to AP mode in NVS
  *      and restarts.
- * 7. Starts the HTTP config server (start_webserver), initialises the OSC
+ * 7. Starts the HTTP config server (http_start_webserver), initialises the OSC
  *    UDP socket (networking_init) with `received` as the message callback,
  *    initialises the ADC for analogue reads (adc_init), and spawns
  *    gpio_task to periodically poll and report GPIO state over OSC.
@@ -1226,7 +1247,7 @@ void app_main(void)
     }
 
     // Start HTTP server directly
-    httpd_handle_t server = start_webserver();
+    httpd_handle_t server = http_start_webserver();
     (void)server;
 
     // Spawns the recive Server that handles all remote -> x-osc2 messages + makes socket
@@ -1241,3 +1262,6 @@ void app_main(void)
     // Spawns a task that sends the Current Configured Gpio
     xTaskCreate(gpio_task, "GPIO Task", 8192, NULL, 5, NULL);
 }
+
+//------------------------------------------------------------------------------
+// End of file
