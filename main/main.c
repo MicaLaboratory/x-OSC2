@@ -1,9 +1,9 @@
 /**
  * @file main.c
  * @author Ben Marples
- * 
+ *
  * @brief WiFi/HTTP config server, OSC router, and GPIO poller for the X‑OSC2 device
- * 
+ *
  * @details
  * Owns four responsibilities:
  *  - WiFi setup and lifecycle: brings the device up in AP or STA mode
@@ -81,12 +81,10 @@
 #include "NVS_Helper_Funcs.h"
 #include "Networking.h"
 
-
 //------------------------------------------------------------------------------
-// Definitions 
+// Definitions
 // Pincount
 #define PINCOUNT CONFIG_PINCOUNT
-
 
 // Firmware version
 #define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
@@ -122,8 +120,6 @@
 
 // Wifi retry count
 static int s_retry_num = 0;
-
-
 
 // Logging Tags
 static const char *TAG_AP = "WiFi SoftAP";
@@ -189,12 +185,12 @@ static esp_err_t http_network_handler(httpd_req_t *const req);
 static esp_err_t http_network_json_handler(httpd_req_t *const req);
 
 //------------------------------------------------------------------------------
-// Function Implementations 
+// Function Implementations
 
-/** 
-* @brief Instantiates defaults configurations and pushes to the in memory struct
-* @param nvs Expects a pointer to a NVS_Global object 
-*/
+/**
+ * @brief Instantiates defaults configurations and pushes to the in memory struct
+ * @param nvs Expects a pointer to a NVS_Global object
+ */
 static void init_default_config(NVS_Global *const nvs)
 {
     /* -----------------------------------------
@@ -246,13 +242,13 @@ static void init_default_config(NVS_Global *const nvs)
     ESP_ERROR_CHECK(nvs_save_gpio_pins(default_modes, default_ios));
 }
 
-/** 
-* @brief Handles all Wi-FI based events (ESP BOILER PLATE)
-* @param arg Unused
-* @param event_base Used to tell if event is a Wi-Fi or Ip Based Event
-* @param event_id Used to tell different events appart
-* @param event_data Holds the current relevant data of the event
-*/
+/**
+ * @brief Handles all Wi-FI based events (ESP BOILER PLATE)
+ * @param arg Unused
+ * @param event_base Used to tell if event is a Wi-Fi or Ip Based Event
+ * @param event_id Used to tell different events appart
+ * @param event_data Holds the current relevant data of the event
+ */
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED)
@@ -316,11 +312,11 @@ static esp_err_t http_base_handler(httpd_req_t *const req)
     return ESP_OK;
 }
 
-/** 
-* @brief Triggers A full Reset of the device by setting the Wi-Fi mode to be out of range then restarting to trigger init_default_config(NVS_Global *const nvs) 
-* @param req HTTP GET request; 
-* @return Should not return since esp_restart() cancels the function
-*/
+/**
+ * @brief Triggers A full Reset of the device by setting the Wi-Fi mode to be out of range then restarting to trigger init_default_config(NVS_Global *const nvs)
+ * @param req HTTP GET request;
+ * @return Should not return since esp_restart() cancels the function
+ */
 static esp_err_t http_configure_reset(httpd_req_t *const req)
 {
     uint32_t mode = AP_MODE_END;
@@ -744,7 +740,7 @@ httpd_handle_t http_start_webserver()
 }
 
 /**
- * @brief Fetches the current Ip address of the X-OSC2 
+ * @brief Fetches the current Ip address of the X-OSC2
  * @return The current Ip or "0.0.0.0" If failed
  */
 static char *wifi_get_current_ip(void)
@@ -777,7 +773,7 @@ static char *wifi_get_current_ip(void)
 
 // OSC message server
 /**
- * @brief Is a callback function that is called from Networking.c 
+ * @brief Is a callback function that is called from Networking.c
  * @param data Holds the data recieved from the port
  * @param number_of_bytes Size of data recieved from the port
  */
@@ -950,7 +946,7 @@ void osc_send_ping_message(void)
  *
  * Creates the ADC_UNIT_1 oneshot handle and configures channels for pins 2-6
  * (ADC channel = pin - 1) with 12 dB attenuation and default bitwidth.
- * @note Pins 2-6 are valid for analog reads but will be different if the board changes 
+ * @note Pins 2-6 are valid for analog reads but will be different if the board changes
  */
 static void adc_init(void)
 {
