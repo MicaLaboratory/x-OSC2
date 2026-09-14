@@ -25,61 +25,82 @@
  */
 //------------------------------------------------------------------------------
 // Includes
+// ─────────────────────────────────────────────
+// Standard C
+// ─────────────────────────────────────────────
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
-#include "OscAddress.h"
-#include "OscMessage.h"
-#include "esp_err.h"
-#include "nvs_flash.h"
-#include "nvs.h"
+// ─────────────────────────────────────────────
+// ESP‑IDF Core
+// ─────────────────────────────────────────────
 
-#include "esp_system.h"
-#include "driver/gpio.h"
-#include "esp_wifi.h"
-#include "sdkconfig.h"
-#include "soc/gpio_num.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
-#include "esp_mac.h"
-#include "esp_wifi.h"
+#include "sdkconfig.h" // Access to CONFIG_ settings on build
+#include "esp_log.h"   // Used for log macro
+#include "esp_err.h"   // Used For Esp_Err
+#include "nvs_flash.h" // Used For intialisation 
+
+// ─────────────────────────────────────────────
+// Networking 
+// ─────────────────────────────────────────────
 #include "esp_event.h"
-#include "esp_log.h"
+#include "esp_wifi.h"
+#include "esp_mac.h"
 #include "esp_netif_net_stack.h"
 #include "esp_netif.h"
-#include "nvs_flash.h"
+
+// ─────────────────────────────────────────────
+// FreeRTOS
+// ─────────────────────────────────────────────
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+
+// ─────────────────────────────────────────────
+// LWIP 
+// ─────────────────────────────────────────────
 #include "lwip/inet.h"
 #include "lwip/netdb.h"
 #include "lwip/sockets.h"
+
 #if IP_NAPT
 #include "lwip/lwip_napt.h"
 #endif
+
 #include "lwip/err.h"
 #include "lwip/sys.h"
-
+// ─────────────────────────────────────────────
+// HTTP Server - JSON
+// ─────────────────────────────────────────────
 #include "esp_http_server.h"
-
-#include "lwip/err.h"
-#include "lwip/sockets.h"
-#include "lwip/sys.h"
-
 #include "cJSON.h"
+
+// ─────────────────────────────────────────────
+// OSC99
+// ─────────────────────────────────────────────
+#include "OscAddress.h"
+#include "OscMessage.h"
 #include "OscError.h"
 #include "OscPacket.h"
 #include "OscSlip.h"
 #include "Osc99.h"
-#include "OSC_Routes.h"
 
+// ─────────────────────────────────────────────
+// GPIO
+// ─────────────────────────────────────────────
+#include "driver/gpio.h"
+#include "soc/gpio_num.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#include "esp_log.h"
-
+// ─────────────────────────────────────────────
+// Project‑specific headers
+// ─────────────────────────────────────────────
 #include "NVS_Helper_Funcs.h"
 #include "Networking.h"
+#include "OSC_Routes.h"
 
 //------------------------------------------------------------------------------
 // Definitions
