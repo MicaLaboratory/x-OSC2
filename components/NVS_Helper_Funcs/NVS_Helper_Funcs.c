@@ -8,9 +8,7 @@
 #include <stdio.h>
 #include <inttypes.h> // for PRId32
 #include "NVS_Helper_Funcs.h"
-
 #include "esp_log.h"
-
 #include "NVS_Helper_Funcs.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -90,15 +88,15 @@ static const FieldDesc g_fields[] = {
 };
 
 //------------------------------------------------------------------------------
-// Function Definitions
+// Function Declarations
 
-esp_err_t nvs_update(NVS_Global *nvs, const char *field_name, const void *value);
-esp_err_t nvs_populate_value(NVS_Global *nvs, const char *field_name, const void *default_value);
-esp_err_t nvs_populate_all(NVS_Global *nvs, const NVS_Global *defaults);
-esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_type_t type, const void *value);
-esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType type, const void *default_value, void *out_value);
-esp_err_t nvs_save_gpio_pins(const GPIO_State *modes, const GPIO_IO *ios);
-esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO_State *default_modes, const GPIO_IO *default_ios);
+esp_err_t nvs_update(NVS_Global *const nvs, const char *const field_name, const void *const value);
+esp_err_t nvs_populate_value(NVS_Global *nvs, const char *const field_name, const void *const default_value);
+esp_err_t nvs_populate_all(NVS_Global *nvs, const NVS_Global *const defaults);
+esp_err_t nvs_save_value(const char *const namespace_name, const char *const key, nvs_type_t type, const void *const value);
+esp_err_t nvs_load_value(const char *const namespace_name, const char *const key, FieldType type, const void *const default_value, void *out_value);
+esp_err_t nvs_save_gpio_pins(const GPIO_State *const modes, const GPIO_IO *const ios);
+esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO_State *const default_modes, const GPIO_IO *const default_ios);
 
 //------------------------------------------------------------------------------
 // Function Implementations
@@ -108,7 +106,7 @@ static inline const void *get_default_value(const NVS_Global *defaults, const Fi
     return (const uint8_t *)defaults + fd->offset;
 }
 
-esp_err_t nvs_update(NVS_Global *nvs, const char *field_name, const void *value)
+esp_err_t nvs_update(NVS_Global *const nvs, const char *const field_name, const void *const value)
 {
     for (size_t i = 0; i < sizeof(g_fields) / sizeof(g_fields[0]); i++)
     {
@@ -168,7 +166,7 @@ esp_err_t nvs_update(NVS_Global *nvs, const char *field_name, const void *value)
     return ESP_ERR_NOT_FOUND;
 }
 
-esp_err_t nvs_populate_value(NVS_Global *nvs, const char *field_name, const void *default_value)
+esp_err_t nvs_populate_value(NVS_Global *nvs, const char *const field_name, const void *const default_value)
 {
     for (size_t i = 0; i < sizeof(g_fields) / sizeof(g_fields[0]); i++)
     {
@@ -241,7 +239,7 @@ esp_err_t nvs_populate_value(NVS_Global *nvs, const char *field_name, const void
     return ESP_ERR_NOT_FOUND;
 }
 
-esp_err_t nvs_populate_all(NVS_Global *nvs, const NVS_Global *defaults)
+esp_err_t nvs_populate_all(NVS_Global *nvs, const NVS_Global *const defaults)
 {
     for (size_t i = 0; i < sizeof(g_fields) / sizeof(g_fields[0]); i++)
     {
@@ -258,7 +256,7 @@ esp_err_t nvs_populate_all(NVS_Global *nvs, const NVS_Global *defaults)
     return ESP_OK;
 }
 
-esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_type_t type, const void *value)
+esp_err_t nvs_save_value(const char *const namespace_name, const char *const key, nvs_type_t type, const void *const value)
 {
     nvs_handle_t handle;
     esp_err_t err = nvs_open(namespace_name, NVS_READWRITE, &handle);
@@ -315,7 +313,7 @@ esp_err_t nvs_save_value(const char *namespace_name, const char *key, nvs_type_t
     return err;
 }
 
-esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType type, const void *default_value, void *out_value)
+esp_err_t nvs_load_value(const char *const namespace_name, const char *const key, FieldType type, const void *const default_value, void *out_value)
 {
     nvs_handle_t handle;
     esp_err_t err = nvs_open(namespace_name, NVS_READONLY, &handle);
@@ -416,15 +414,13 @@ esp_err_t nvs_load_value(const char *namespace_name, const char *key, FieldType 
     return err;
 }
 
-// In NVS_Helper_Funcs.c
-
-esp_err_t nvs_save_gpio_modes(const GPIO_State *modes)
+esp_err_t nvs_save_gpio_modes(const GPIO_State *const modes)
 {
     nvs_blob_t blob = {.data = modes, .size = sizeof(GPIO_State) * PINCOUNT};
     return nvs_save_value("gpio_pins", "modes", NVS_TYPE_BLOB, &blob);
 }
 
-esp_err_t nvs_load_gpio_modes(GPIO_State *out_modes, const GPIO_State *default_modes)
+esp_err_t nvs_load_gpio_modes(GPIO_State *out_modes, const GPIO_State *const default_modes)
 {
     nvs_handle_t handle;
     esp_err_t err = nvs_open("gpio_pins", NVS_READONLY, &handle);
@@ -443,13 +439,13 @@ esp_err_t nvs_load_gpio_modes(GPIO_State *out_modes, const GPIO_State *default_m
     return err;
 }
 
-esp_err_t nvs_save_gpio_ios(const GPIO_IO *ios)
+esp_err_t nvs_save_gpio_ios(const GPIO_IO *const ios)
 {
     nvs_blob_t blob = {.data = ios, .size = sizeof(GPIO_IO) * PINCOUNT};
     return nvs_save_value("gpio_pins", "ios", NVS_TYPE_BLOB, &blob);
 }
 
-esp_err_t nvs_load_gpio_ios(GPIO_IO *out_ios, const GPIO_IO *default_ios)
+esp_err_t nvs_load_gpio_ios(GPIO_IO *out_ios, const GPIO_IO *const default_ios)
 {
     nvs_handle_t handle;
     esp_err_t err = nvs_open("gpio_pins", NVS_READONLY, &handle);
@@ -468,7 +464,7 @@ esp_err_t nvs_load_gpio_ios(GPIO_IO *out_ios, const GPIO_IO *default_ios)
     return err;
 }
 
-esp_err_t nvs_save_gpio_pins(const GPIO_State *modes, const GPIO_IO *ios)
+esp_err_t nvs_save_gpio_pins(const GPIO_State *const modes, const GPIO_IO *const ios)
 {
     esp_err_t err = nvs_save_gpio_modes(modes);
     if (err != ESP_OK)
@@ -480,7 +476,7 @@ esp_err_t nvs_save_gpio_pins(const GPIO_State *modes, const GPIO_IO *ios)
     return err;
 }
 
-esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO_State *default_modes, const GPIO_IO *default_ios)
+esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO_State *const default_modes, const GPIO_IO *const default_ios)
 {
     esp_err_t err = nvs_load_gpio_modes(out_modes, default_modes);
     if (err != ESP_OK)
@@ -492,7 +488,6 @@ esp_err_t nvs_load_gpio_pins(GPIO_State *out_modes, GPIO_IO *out_ios, const GPIO
     return err;
 }
 
-// Print all NVS entries
 void print_all_nvs_entries(const char *namespace)
 {
     nvs_iterator_t it = NULL;

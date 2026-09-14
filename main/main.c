@@ -2,15 +2,18 @@
  * @file main.c
  * @author Ben Marples
  *
+ * @brief WiFi/HTTP config server, OSC router, and GPIO poller for the X‑OSC2 device
+ *
+ * @details
  * Owns four responsibilities:
  *  - WiFi setup and lifecycle: brings the device up in AP or STA mode
  *    (see app_main, wifi_event_handler) based on nvs_global.net_settings.
- *  - HTTP configuration server: a single-page UI (base_handler) plus
+ *  - HTTP configuration server: a single-page UI (http_base_handler) plus
  *    GET/POST handlers for reading and writing network, OSC, and GPIO
- *    settings (Network_Handler, OSC_Handler, GPIO_Handler and their
- *    *_json_handler counterparts). See start_webserver for the route table.
+ *    settings (http_network_handler, http_osc_handler, http_gpio_handler and their
+ *    *_json_handler counterparts). See http_start_webserver for the route table.
  *  - OSC message routing: incoming UDP OSC messages are parsed and
- *    dispatched to handlers in ROUTES (see received, ProcessMessage,
+ *    dispatched to handlers in ROUTES (see received, osc_process_message,
  *    OSC_Routes.h for the route table itself).
  *  - GPIO polling: periodically reads configured digital/analogue pins
  *    and reports them over OSC (see gpio_task, send_digital_inputs,
@@ -21,68 +24,91 @@
  * NVS_Helper_Funcs.h for the load/save helpers and defaults.
  */
 //------------------------------------------------------------------------------
-// includes
+// Includes
+// ─────────────────────────────────────────────
+// Standard C
+// ─────────────────────────────────────────────
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
-#include "OscAddress.h"
-#include "OscMessage.h"
-#include "esp_err.h"
-#include "nvs_flash.h"
-#include "nvs.h"
+// ─────────────────────────────────────────────
+// ESP‑IDF Core
+// ─────────────────────────────────────────────
 
-#include "esp_system.h"
-#include "driver/gpio.h"
-#include "esp_wifi.h"
-#include "sdkconfig.h"
-#include "soc/gpio_num.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
-#include "esp_mac.h"
-#include "esp_wifi.h"
+#include "sdkconfig.h" // Access to CONFIG_ settings on build
+#include "esp_log.h"   // Used for log macro
+#include "esp_err.h"   // Used For Esp_Err
+#include "nvs_flash.h" // Used For intialisation 
+
+// ─────────────────────────────────────────────
+// Networking 
+// ─────────────────────────────────────────────
 #include "esp_event.h"
-#include "esp_log.h"
+#include "esp_wifi.h"
+#include "esp_mac.h"
 #include "esp_netif_net_stack.h"
 #include "esp_netif.h"
-#include "nvs_flash.h"
+
+// ─────────────────────────────────────────────
+// FreeRTOS
+// ─────────────────────────────────────────────
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+
+// ─────────────────────────────────────────────
+// LWIP 
+// ─────────────────────────────────────────────
 #include "lwip/inet.h"
 #include "lwip/netdb.h"
 #include "lwip/sockets.h"
+
 #if IP_NAPT
 #include "lwip/lwip_napt.h"
 #endif
+
 #include "lwip/err.h"
 #include "lwip/sys.h"
-
+// ─────────────────────────────────────────────
+// HTTP Server - JSON
+// ─────────────────────────────────────────────
 #include "esp_http_server.h"
-
-#include "lwip/err.h"
-#include "lwip/sockets.h"
-#include "lwip/sys.h"
-
 #include "cJSON.h"
+
+// ─────────────────────────────────────────────
+// OSC99
+// ─────────────────────────────────────────────
+#include "OscAddress.h"
+#include "OscMessage.h"
 #include "OscError.h"
 #include "OscPacket.h"
 #include "OscSlip.h"
 #include "Osc99.h"
-#include "OSC_Routes.h"
 
+// ─────────────────────────────────────────────
+// GPIO
+// ─────────────────────────────────────────────
+#include "driver/gpio.h"
+#include "soc/gpio_num.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#include "esp_log.h"
-
+// ─────────────────────────────────────────────
+// Project‑specific headers
+// ─────────────────────────────────────────────
 #include "NVS_Helper_Funcs.h"
 #include "Networking.h"
-
+#include "OSC_Routes.h"
 
 //------------------------------------------------------------------------------
-// Definitions 
+// Definitions
 // Pincount
 #define PINCOUNT CONFIG_PINCOUNT
+
+// Firmware version
+#define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
 
 // Wifi
 #if CONFIG_ESP_WIFI_AUTH_OPEN
@@ -103,7 +129,6 @@
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
 #endif
 
-
 // Wifi event bits
 /* The event group allows multiple bits for each event, but we only care about two events:
  * - we are connected to the AP with an IP
@@ -111,12 +136,11 @@
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
+//------------------------------------------------------------------------------
+// Variables
+
 // Wifi retry count
 static int s_retry_num = 0;
-
-// Firmware version
-#define FIRMWARE_VERSION CONFIG_FIRMWARE_VERSION
-
 
 // Logging Tags
 static const char *TAG_AP = "WiFi SoftAP";
@@ -128,13 +152,13 @@ static EventGroupHandle_t s_wifi_event_group;
 // Used to read analog pins
 adc_oneshot_unit_handle_t adc_handle;
 
-// Usef to keep track of digital pins
+// Used to keep track of digital pins
 static int last_digital[PINCOUNT] = {0};
 
 //------------------------------------------------------------------------------
 // Structures
 
-// NVS_GLOBAL_INTERMIDARY
+// NVS_GLOBAL_INTERMEDIARY
 
 static NVS_Global nvs_global;
 
@@ -161,19 +185,34 @@ static const NVS_Global NVS_DEFAULTS = {
     }};
 
 //------------------------------------------------------------------------------
-// Function Definitions
-char *getCurrentIP();
-void init_default_Config(NVS_Global *const nvs);
-static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage);
+// Function Declarations
+static char *wifi_get_current_ip(void);
+static void init_default_config(NVS_Global *const nvs);
+static int osc_parse_channel_validated(const char *addr, const char *prefix, const int min_ch, const int max_ch);
+static void osc_process_message(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage);
+static OscError osc_send_contents(const void *const oscContents);
+
+static void adc_init(void);
+static void gpio_task(void *pv);
+
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+static esp_err_t http_base_handler(httpd_req_t *const req);
+static esp_err_t http_configure_reset(httpd_req_t *const req);
+static esp_err_t http_osc_handler(httpd_req_t *const req);
+static esp_err_t http_osc_json_handler(httpd_req_t *const req);
+static esp_err_t http_gpio_handler(httpd_req_t *const req);
+static esp_err_t http_gpio_json_handler(httpd_req_t *const req);
+static esp_err_t http_network_handler(httpd_req_t *const req);
+static esp_err_t http_network_json_handler(httpd_req_t *const req);
 
 //------------------------------------------------------------------------------
-// Function Implementations 
+// Function Implementations
 
-/** 
-* @brief Instantiates defaults configurations and pushes to the in memory struct
-* @param nvs Expects a pointer to a NVS_Global object 
-*/
-void init_default_Config(NVS_Global *const nvs)
+/**
+ * @brief Instantiates defaults configurations and pushes to the in memory struct
+ * @param nvs Expects a pointer to a NVS_Global object
+ */
+static void init_default_config(NVS_Global *const nvs)
 {
     /* -----------------------------------------
        Network Settings
@@ -224,13 +263,13 @@ void init_default_Config(NVS_Global *const nvs)
     ESP_ERROR_CHECK(nvs_save_gpio_pins(default_modes, default_ios));
 }
 
-/** 
-* @brief Handles all Wi-FI based events (ESP BOILER PLATE)
-* @param arg Unused
-* @param event_base Used to tell if event is a Wi-Fi or Ip Based Event
-* @param event_id Used to tell different events appart
-* @param event_data Holds the current relevant data of the event
-*/
+/**
+ * @brief Handles all Wi-FI based events (ESP BOILER PLATE)
+ * @param arg Unused
+ * @param event_base Used to tell if event is a Wi-Fi or Ip Based Event
+ * @param event_id Used to tell different events appart
+ * @param event_data Holds the current relevant data of the event
+ */
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED)
@@ -286,7 +325,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
  * @param req Current HTTP request.
  * @return ESP_OK on success.
  */
-static esp_err_t base_handler(httpd_req_t *req)
+static esp_err_t http_base_handler(httpd_req_t *const req)
 {
     print_all_nvs_entries("Global-Config");
     const char *resp_str = "<head><style>tr,th,td {    border:1px solid black;}</style></head><body><script>function updateGPIOFromJSON(data) {    if (!data || !data.pins) {        console.error(\"Invalid GPIO JSON:\", data);        return;    }    const pins = data.pins;    Object.keys(pins).forEach(pinNum => {        const pinData = pins[pinNum];        const modeSelect = document.querySelector(`select[name=\"pin${pinNum}\"]`);        if (modeSelect) {            modeSelect.value = String(pinData.mode);        }        const ioSelect = document.querySelector(`select[name=\"pin${pinNum}-io\"]`);        if (ioSelect) {            ioSelect.value = String(pinData.io);        }    });}function updateNetworkFromJSON(data) {    if (!data) {        console.error(\"Invalid Network JSON:\", data);        return;    }        const modeAP  = document.querySelector('input[name=\"mode\"][value=\"AP\"]');    const modeSTA = document.querySelector('input[name=\"mode\"][value=\"STA\"]');    if (data.mode === \"AP\" && modeAP)  modeAP.checked = true;    if (data.mode === \"STA\" && modeSTA) modeSTA.checked = true;        const apSSID = document.querySelector('input[name=\"AP-SSID\"]');    const apPass = document.querySelector('input[name=\"AP-Password\"]');    if (apSSID) apSSID.value = data.AP_SSID || \"\";    if (apPass) apPass.value = data.AP_Password || \"\";        const staSSID = document.querySelector('input[name=\"STA-SSID\"]');    const staPass = document.querySelector('input[name=\"STA-Password\"]');    if (staSSID) staSSID.value = data.STA_SSID || \"\";    if (staPass) staPass.value = data.STA_Password || \"\";}function updateOSCFromJSON(data) {    if (!data) {        console.error(\"Invalid OSC JSON:\", data);        return;    }    const remoteIP   = document.querySelector('input[name=\"OSC-Remote\"]');    const remotePort = document.querySelector('input[name=\"OSC-Remote-Port\"]');    const localIP    = document.querySelector('input[name=\"OSC-Local\"]');    const localPort  = document.querySelector('input[name=\"OSC-Local-Port\"]');    if (remoteIP)   remoteIP.value   = data.remote_ip   || \"\";    if (remotePort) remotePort.value = data.remote_port || \"\";    if (localIP)    localIP.value    = data.local_ip    || \"\";    if (localPort)  localPort.value  = data.local_port  || \"\";}document.addEventListener(\"DOMContentLoaded\", () => {    fetch(\"/gpio.json\")        .then(res => res.json())        .then(json => updateGPIOFromJSON(json))        .catch(err => console.error(\"Failed to load GPIO JSON:\", err));            fetch(\"/network.json\")        .then(res => res.json())        .then(json => updateNetworkFromJSON(json))        .catch(err => console.error(\"Failed to load Network JSON:\", err));        fetch(\"/osc.json\")        .then(res => res.json())        .then(json => updateOSCFromJSON(json))        .catch(err => console.error(\"Failed to load OSC JSON:\", err));});</script><section>    <h1>Network</h1>    <form method=\"get\" action=\"/network\">        <p>Network Type:</p>    <input type=\"radio\" name=\"mode\" value=\"AP\"> Self Host    <input type=\"radio\" name=\"mode\" value=\"STA\"> Join Network    <br>    <!-- AP -->    <h3> Access Point Mode (Self Host) </h3>    <label for=\"AP-SSID\">SSID</label>    <input type=\"text\" name=\"AP-SSID\">    <br>    <label for=\"AP-Password\">Password</label>    <input type=\"text\" name=\"AP-Password\">    <br>    <!-- STA -->    <h3> Station Mode (Join Network) </h3>    <label for=\"STA-SSID\">SSID</label>    <input type=\"text\" name=\"STA-SSID\">    <br>    <label for=\"STA-Password\">Password</label>    <input type=\"text\" name=\"STA-Password\">    <br>    <button type=\"submit\" style=\"column-span: 3;\">Update Network Configuration</button>            </form>    </section><section>    <h1>OSC</h1>    <form method=\"get\" action=\"/OSC\">    <!-- OSC -->    <label for=\"OSC-Remote\">Remote IP</label>    <input type=\"text\" name=\"OSC-Remote\">    <label for=\"OSC-Remote-Port\">Port:</label>    <input type=\"number\" name=\"OSC-Remote-Port\">    <br>    <label for=\"OSC-Local\">Local IP</label>    <input type=\"text\" name=\"OSC-Local\">    <label for=\"OSC-Local-Port\">Port:</label>    <input type=\"number\" name=\"OSC-Local-Port\">    <br>    <button type=\"submit\" style=\"column-span: 3;\">Update OSC Configuration</button>            </form>    </section><section><h1>GPIO</h1>    <form method=\"post\" action=\"/GPIO\"> <table><tr><td>Pin - 1</td><td><select name=\"pin1\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin1-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 2</td><td><select name=\"pin2\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin2-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 3</td><td><select name=\"pin3\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin3-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 4</td><td><select name=\"pin4\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin4-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 5</td><td><select name=\"pin5\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin5-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 6</td><td><select name=\"pin6\"> <option value=\"0\">OFF</option><option value=\"1\">Analog</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin6-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 7</td><td><select name=\"pin7\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin7-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 8</td><td><select name=\"pin8\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin8-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 9</td><td><select name=\"pin9\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin9-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 10</td><td><select name=\"pin10\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin10-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 11</td><td><select name=\"pin11\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin11-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 12</td><td><select name=\"pin12\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin12-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 13</td><td><select name=\"pin13\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin13-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 14</td><td><select name=\"pin14\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin14-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 15</td><td><select name=\"pin15\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin15-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 16</td><td><select name=\"pin16\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin16-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 17</td><td><select name=\"pin17\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin17-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 18</td><td><select name=\"pin18\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin18-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 19</td><td><select name=\"pin19\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin19-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 20</td><td><select name=\"pin20\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin20-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 21</td><td><select name=\"pin21\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin21-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 22</td><td><select name=\"pin22\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin22-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 23</td><td><select name=\"pin23\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin23-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 24</td><td><select name=\"pin24\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin24-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 25</td><td><select name=\"pin25\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin25-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 26</td><td><select name=\"pin26\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin26-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 27</td><td><select name=\"pin27\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin27-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr><tr><td>Pin - 28</td><td><select name=\"pin28\"> <option value=\"0\">OFF</option><option value=\"2\">Digital</option></select></td><td>    <select name=\"pin28-io\">        <option value=\"0\">Output</option>        <option value=\"1\">Input</option>    </select></td></tr></table><button type=\"submit\">Save </button></form></body>    ";
@@ -294,12 +333,12 @@ static esp_err_t base_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/** 
-* @brief Triggers A full Reset of the device by setting the Wi-Fi mode to be out of range then restarting to trigger init_default_Config(NVS_Global *const nvs) 
-* @param req HTTP GET request; 
-* @return Should not return since esp_restart() cancels the function
-*/
-static esp_err_t Conf_Reset(httpd_req_t *req)
+/**
+ * @brief Triggers A full Reset of the device by setting the Wi-Fi mode to be out of range then restarting to trigger init_default_config(NVS_Global *const nvs)
+ * @param req HTTP GET request;
+ * @return Should not return since esp_restart() cancels the function
+ */
+static esp_err_t http_configure_reset(httpd_req_t *const req)
 {
     uint32_t mode = AP_MODE_END;
     ESP_ERROR_CHECK(nvs_update(&nvs_global, "net_settings.network_mode", &mode));
@@ -317,7 +356,7 @@ static esp_err_t Conf_Reset(httpd_req_t *req)
  * (value buffer size) rather than rejected or reported to the caller.
  * @return ESP_OK on success; sends a 400 response if any required param is missing or mode is invalid.
  */
-static esp_err_t Network_Handler(httpd_req_t *req)
+static esp_err_t http_network_handler(httpd_req_t *const req)
 {
     char query[256];
     char value[16];
@@ -405,7 +444,7 @@ static esp_err_t Network_Handler(httpd_req_t *req)
  * @note Doesnt validate size before writing to nvs
  * @return ESP_OK on success; sends a 400 response if any required param is missing.
  */
-static esp_err_t OSC_Handler(httpd_req_t *req)
+static esp_err_t http_osc_handler(httpd_req_t *const req)
 {
     char query[256];
     char value[64];
@@ -466,7 +505,7 @@ static esp_err_t OSC_Handler(httpd_req_t *req)
  * @return ESP_OK on success (including partial saves); sends a 400 response if the
  * body is missing or exceeds 1024 bytes.
  */
-static esp_err_t GPIO_Handler(httpd_req_t *req)
+static esp_err_t http_gpio_handler(httpd_req_t *const req)
 {
     // --- Read POST body ---
     const int total = req->content_len;
@@ -516,7 +555,7 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
     esp_err_t err = nvs_save_gpio_pins(nvs_global.gpio_settings.pin_mode, nvs_global.gpio_settings.pin_io);
     if (err != ESP_OK)
     {
-        ESP_LOGE("GPIO_Handler", "Failed to persist pin config: %s", esp_err_to_name(err));
+        ESP_LOGE("http_gpio_handler", "Failed to persist pin config: %s", esp_err_to_name(err));
     }
 
     // --- Respond so browser stops loading ---
@@ -535,7 +574,7 @@ static esp_err_t GPIO_Handler(httpd_req_t *req)
  * @param req Current HTTP request.
  * @return ESP_OK on success.
  */
-static esp_err_t gpio_json_handler(httpd_req_t *req)
+static esp_err_t http_gpio_json_handler(httpd_req_t *const req)
 {
     char json[2048];
     int offset = 0;
@@ -566,7 +605,7 @@ static esp_err_t gpio_json_handler(httpd_req_t *req)
  * @param req Current HTTP request.
  * @return ESP_OK on success.
  */
-static esp_err_t network_json_handler(httpd_req_t *req)
+static esp_err_t http_network_json_handler(httpd_req_t *const req)
 {
     char json[512];
     int offset = 0;
@@ -598,7 +637,7 @@ static esp_err_t network_json_handler(httpd_req_t *req)
  * @param req Current HTTP request.
  * @return ESP_OK on success.
  */
-static esp_err_t osc_json_handler(httpd_req_t *req)
+static esp_err_t http_osc_json_handler(httpd_req_t *const req)
 {
     char json[256];
     int offset = 0;
@@ -625,56 +664,56 @@ static esp_err_t osc_json_handler(httpd_req_t *req)
 static const httpd_uri_t base_uri = {
     .uri = "/",
     .method = HTTP_GET,
-    .handler = base_handler,
+    .handler = http_base_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t reset_uri = {
     .uri = "/reset",
     .method = HTTP_GET,
-    .handler = Conf_Reset,
+    .handler = http_configure_reset,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t network_uri = {
     .uri = "/network",
     .method = HTTP_GET,
-    .handler = Network_Handler,
+    .handler = http_network_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t OSC_uri = {
     .uri = "/OSC",
     .method = HTTP_GET,
-    .handler = OSC_Handler,
+    .handler = http_osc_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t GPIO_uri = {
     .uri = "/GPIO",
     .method = HTTP_POST,
-    .handler = GPIO_Handler,
+    .handler = http_gpio_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t gpio_json_uri = {
     .uri = "/gpio.json",
     .method = HTTP_GET,
-    .handler = gpio_json_handler,
+    .handler = http_gpio_json_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t osc_json_uri = {
     .uri = "/osc.json",
     .method = HTTP_GET,
-    .handler = osc_json_handler,
+    .handler = http_osc_json_handler,
     .user_ctx = NULL,
 };
 
 static const httpd_uri_t network_json_uri = {
     .uri = "/network.json",
     .method = HTTP_GET,
-    .handler = network_json_handler,
+    .handler = http_network_json_handler,
     .user_ctx = NULL,
 };
 
@@ -683,12 +722,12 @@ static const httpd_uri_t network_json_uri = {
  * (/, /network, /OSC, /GPIO, /gpio.json, /osc.json, /network.json, /reset).
  * @return Handle to the running server, or NULL if httpd_start failed.
  */
-httpd_handle_t start_webserver()
+httpd_handle_t http_start_webserver()
 {
 
     httpd_handle_t server = NULL;
 
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    const httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
     if (httpd_start(&server, &config) == ESP_OK)
     {
@@ -722,10 +761,10 @@ httpd_handle_t start_webserver()
 }
 
 /**
- * @brief Fetches the current Ip address of the X-OSC2 
+ * @brief Fetches the current Ip address of the X-OSC2
  * @return The current Ip or "0.0.0.0" If failed
  */
-char *getCurrentIP()
+static char *wifi_get_current_ip(void)
 {
     static char ip_str[16];
     esp_netif_ip_info_t ip_info;
@@ -755,7 +794,7 @@ char *getCurrentIP()
 
 // OSC message server
 /**
- * @brief Is a callback function that is called from Networking.c 
+ * @brief Is a callback function that is called from Networking.c
  * @param data Holds the data recieved from the port
  * @param number_of_bytes Size of data recieved from the port
  */
@@ -764,7 +803,7 @@ void received(const void *const data, const size_t number_of_bytes)
     // Process OSC
     OscPacket oscPacket;
     OscPacketInitialiseFromCharArray(&oscPacket, data, number_of_bytes);
-    oscPacket.processMessage = ProcessMessage;
+    oscPacket.processMessage = osc_process_message;
     OscPacketProcessMessages(&oscPacket);
 }
 
@@ -776,7 +815,7 @@ void received(const void *const data, const size_t number_of_bytes)
  * @param max_ch Maximum valid channel number (inclusive).
  * @return Parsed channel number, or -1 if missing/non-numeric/out of range.
  */
-static int parseChannelValidated(const char *addr, const char *prefix, const int min_ch, const int max_ch)
+static int osc_parse_channel_validated(const char *addr, const char *prefix, const int min_ch, const int max_ch)
 {
     const char *p = addr + strlen(prefix);
     if (!p || *p == '\0')
@@ -807,7 +846,7 @@ static int parseChannelValidated(const char *addr, const char *prefix, const int
  * Matches oscMessage->oscAddressPattern against each route's prefix. For
  * channel-based routes (r->has_channel), the address must start with the
  * route's prefix followed by a valid numeric channel in the range
- * 1..PINCOUNT (see parseChannelValidated); the parsed channel is passed to
+ * 1..PINCOUNT (see osc_parse_channel_validated); the parsed channel is passed to
  * the handler. For non-channel routes, the address must match the prefix
  * exactly, and the handler is called with channel -1. If no route matches,
  * or a channel-based route's prefix matches but the channel suffix is
@@ -817,7 +856,7 @@ static int parseChannelValidated(const char *addr, const char *prefix, const int
  * @param oscMessage Parsed OSC message to route; must have a non-NULL
  * oscAddressPattern.
  */
-static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage)
+static void osc_process_message(const OscTimeTag *const oscTimeTag, OscMessage *const oscMessage)
 {
     const char *addr = oscMessage->oscAddressPattern;
     if (addr == NULL)
@@ -843,7 +882,7 @@ static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const
             }
 
             // parse and validate channel (example valid range 1..16; adjust if needed)
-            const int channel = parseChannelValidated(addr, r->prefix, 1, PINCOUNT);
+            const int channel = osc_parse_channel_validated(addr, r->prefix, 1, PINCOUNT);
             if (channel < 0)
             {
                 ESP_LOGW("OSC_Process", "Matched prefix '%s' but invalid channel in '%s'", r->prefix, addr);
@@ -877,15 +916,15 @@ static void ProcessMessage(const OscTimeTag *const oscTimeTag, OscMessage *const
  * @return OscErrorNone on success, or the OscError returned by
  * OscPacketInitialiseFromContents on failure (nothing is sent in that case).
  */
-static OscError sendOscContents(const void *const oscContents)
+static OscError osc_send_contents(const void *const oscContents)
 {
-    OscPacket OscPacket;
-    OscError err = OscPacketInitialiseFromContents(&OscPacket, oscContents);
+    OscPacket osc_packet;
+    OscError err = OscPacketInitialiseFromContents(&osc_packet, oscContents);
     if (err != OscErrorNone)
     {
         return err;
     }
-    udp_send_osc(OscPacket.contents, OscPacket.size);
+    udp_send_osc(osc_packet.contents, osc_packet.size);
     return OscErrorNone;
 }
 
@@ -896,13 +935,13 @@ static OscError sendOscContents(const void *const oscContents)
  * Intended for discovery: a remote OSC client can use the reply to find the
  * device's IP and confirm it's running the expected firmware version.
  */
-void sendPingMessage()
+void osc_send_ping_message(void)
 {
     OscMessage oscMessage;
     OscMessageInitialise(&oscMessage, "/ping");
 
     // 1. Add current IP (AP or STA depending on NVS setting)
-    OscMessageAddString(&oscMessage, getCurrentIP());
+    OscMessageAddString(&oscMessage, wifi_get_current_ip());
 
     // 2. Add MAC address
     uint8_t mac[6];
@@ -919,7 +958,7 @@ void sendPingMessage()
     OscMessageAddString(&oscMessage, FIRMWARE_VERSION);
 
     // Send the OSC message
-    sendOscContents(&oscMessage);
+    osc_send_contents(&oscMessage);
 }
 
 // Pin reads
@@ -928,9 +967,9 @@ void sendPingMessage()
  *
  * Creates the ADC_UNIT_1 oneshot handle and configures channels for pins 2-6
  * (ADC channel = pin - 1) with 12 dB attenuation and default bitwidth.
- * @note Pins 2-6 are valid for analog reads but will be different if the board changes 
+ * @note Pins 2-6 are valid for analog reads but will be different if the board changes
  */
-void adc_init(void)
+static void adc_init(void)
 {
     adc_oneshot_unit_init_cfg_t init_cfg = {
         .unit_id = ADC_UNIT_1,
@@ -960,7 +999,7 @@ void adc_init(void)
  * @param pin GPIO pin number to read.
  * @return 0 or 1, the current logic level of the pin.
  */
-int readDigitalPin(const int pin)
+int gpio_read_digital_pin(const int pin)
 {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << pin),
@@ -980,7 +1019,7 @@ int readDigitalPin(const int pin)
  * Must be a pin configured in adc_init (channels for pins 2-6).
  * @return Raw ADC reading normalised to the range 0.0-1.0 (raw / 4095).
  */
-float readAnaloguePin(const int pin)
+float gpio_read_analog_pin(const int pin)
 {
     const int channel = pin - 1;
 
@@ -1006,7 +1045,7 @@ void send_digital_inputs(void)
     {
         if (nvs_global.gpio_settings.pin_mode[i - 1] == GPIO_DIGITAL)
         {
-            int val = readDigitalPin(i);
+            int val = gpio_read_digital_pin(i);
             values[i - 1] = val;
 
             if (val != last_digital[i - 1])
@@ -1032,7 +1071,7 @@ void send_digital_inputs(void)
         OscMessageAddInt32(&msg, values[i]);
     }
 
-    sendOscContents(&msg);
+    osc_send_contents(&msg);
 }
 
 /**
@@ -1050,7 +1089,7 @@ void send_analogue_inputs(void)
     {
         if (nvs_global.gpio_settings.pin_mode[i - 1] == GPIO_ANALOGUE)
         {
-            float val = readAnaloguePin(i);
+            float val = gpio_read_analog_pin(i);
             OscMessageAddFloat32(&msg, val);
         }
         else
@@ -1059,7 +1098,7 @@ void send_analogue_inputs(void)
         }
     }
 
-    sendOscContents(&msg);
+    osc_send_contents(&msg);
 }
 
 /**
@@ -1072,7 +1111,7 @@ void send_analogue_inputs(void)
  * @param pv Unused task parameter (required by the FreeRTOS task signature).
  * @note To increase accuracy of frequency. Increase the value of CONFIG_FREERTOS_HZ=1000 in sdkconfig.defaults
  */
-void gpio_task(void *pv)
+static void gpio_task(void *pv)
 {
     while (1)
     {
@@ -1091,7 +1130,7 @@ void gpio_task(void *pv)
  * 1. Initialises NVS flash, erasing and re-initialising if the partition
  *    is out of free pages or a newer NVS version is found.
  * 2. Loads the stored network_mode; if it's missing or out of the valid
- *    AP..AP_MODE_END range, writes factory defaults via init_default_Config
+ *    AP..AP_MODE_END range, writes factory defaults via init_default_config
  *    and restarts to pick them up.
  * 3. Populates nvs_global from NVS_DEFAULTS for any unset fields, and loads
  *    the saved GPIO pin mode/IO configuration.
@@ -1106,7 +1145,7 @@ void gpio_task(void *pv)
  *      WIFI_CONNECTED_BIT or WIFI_FAIL_BIT. On failure after
  *      CONFIG_ESP_MAXIMUM_STA_RETRY retries, falls back to AP mode in NVS
  *      and restarts.
- * 7. Starts the HTTP config server (start_webserver), initialises the OSC
+ * 7. Starts the HTTP config server (http_start_webserver), initialises the OSC
  *    UDP socket (networking_init) with `received` as the message callback,
  *    initialises the ADC for analogue reads (adc_init), and spawns
  *    gpio_task to periodically poll and report GPIO state over OSC.
@@ -1129,13 +1168,13 @@ void app_main(void)
     flashLedRed();
 
     // Loads the Current Network Mode
-    uint32_t network_mode_default = AP_MODE_END;
+    const uint32_t network_mode_default = AP_MODE_END;
     uint32_t network_mode = 0;
     esp_err_t err = nvs_load_value("net_settings", "network_mode", FIELD_ENUM, &network_mode_default, &network_mode);
     ESP_LOGE("NVS_LOAD", "%s", esp_err_to_name(err));
     if (network_mode < AP || network_mode >= AP_MODE_END)
     {
-        init_default_Config(&nvs_global);
+        init_default_config(&nvs_global);
         esp_restart();
     }
 
@@ -1226,14 +1265,14 @@ void app_main(void)
     }
 
     // Start HTTP server directly
-    httpd_handle_t server = start_webserver();
+    httpd_handle_t server = http_start_webserver();
     (void)server;
 
     // Spawns the recive Server that handles all remote -> x-osc2 messages + makes socket
-    WirelessCallbacks cb = {
+    const WirelessCallbacks wireless_callbacks = {
         .received = received,
     };
-    networking_init(&nvs_global.osc_settings, &cb);
+    networking_init(&nvs_global.osc_settings, &wireless_callbacks);
 
     // Allows for analogue pin reads
     adc_init();
@@ -1241,3 +1280,6 @@ void app_main(void)
     // Spawns a task that sends the Current Configured Gpio
     xTaskCreate(gpio_task, "GPIO Task", 8192, NULL, 5, NULL);
 }
+
+//------------------------------------------------------------------------------
+// End of file
